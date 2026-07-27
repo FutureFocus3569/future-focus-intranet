@@ -10,6 +10,9 @@ import { supabase } from './lib/supabase.js';
 import { LoginPage } from './pages/Login.jsx';
 import { StaffManagementPage } from './pages/StaffManagement.jsx';
 import { EventsPage } from './pages/EventsPage.jsx';
+import { WhatsHappeningPage } from './pages/WhatsHappening.jsx';
+import { AskFutureFocusPage } from './pages/AskFutureFocus.jsx';
+import { PoliciesAdminPage } from './pages/PoliciesAdmin.jsx';
 import './styles.css';
 
 const navItems = [
@@ -33,10 +36,10 @@ const quickLinks = [
 ];
 
 const topCards = [
-  { icon: Leaf, title: "WHAT'S HAPPENING", text: 'Leadership updates, celebrations and company news.', tone: 'green', link: 'View' },
-  { icon: Users, title: 'YOUR CENTRE', text: 'Occupancy, staffing, roster percentage and important actions.', tone: 'blue', link: 'View' },
-  { icon: BookOpen, title: 'PĀTAKA KAI', text: 'Learning, resources, PD and professional development.', tone: 'mint', link: 'View' },
-  { icon: MessageCircle, title: 'ASK FUTURE FOCUS', text: 'Search policies and get answers instantly.', tone: 'purple', link: 'Ask Now' },
+  { icon: Leaf, title: "WHAT'S HAPPENING", text: 'Leadership updates, celebrations and company news.', tone: 'green', link: 'View', page: "What's Happening" },
+  { icon: Users, title: 'YOUR CENTRE', text: 'Occupancy, staffing, roster percentage and important actions.', tone: 'blue', link: 'View', page: null },
+  { icon: BookOpen, title: 'PĀTAKA KAI', text: 'Learning, resources, PD and professional development.', tone: 'mint', link: 'View', page: null },
+  { icon: MessageCircle, title: 'ASK FUTURE FOCUS', text: 'Search policies and get answers instantly.', tone: 'purple', link: 'Ask Now', page: 'FF AI' },
 ];
 
 const news = [
@@ -79,7 +82,7 @@ function Logo() {
   );
 }
 
-function Sidebar({ open, onClose, page, setPage, canManageStaff }) {
+function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
   return <>
     {open && <div className="sidebar-backdrop" onClick={onClose} />}
     <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
@@ -96,6 +99,12 @@ function Sidebar({ open, onClose, page, setPage, canManageStaff }) {
           <button className={`nav-item ${page === 'Staff' ? 'active' : ''}`}
             onClick={() => { setPage('Staff'); onClose(); }}>
             <Users size={19} strokeWidth={1.9} /> <span>Staff</span>
+          </button>
+        )}
+        {profile?.permission === 'super_admin' && (
+          <button className={`nav-item ${page === 'Policies' ? 'active' : ''}`}
+            onClick={() => { setPage('Policies'); onClose(); }}>
+            <FileText size={19} strokeWidth={1.9} /> <span>Manage Policies</span>
           </button>
         )}
       </nav>
@@ -194,11 +203,11 @@ function Hero() {
   </section>
 }
 
-function TopCard({item}) {
+function TopCard({item, onNavigate}) {
   const Icon = item.icon;
   return <article className={`top-card ${item.tone}`}>
     <div className="circle-icon"><Icon size={28}/></div>
-    <div><h3>{item.title}</h3><p>{item.text}</p><button>{item.link} <ChevronRight size={14}/></button></div>
+    <div><h3>{item.title}</h3><p>{item.text}</p><button onClick={() => item.page && onNavigate(item.page)}>{item.link} <ChevronRight size={14}/></button></div>
   </article>
 }
 
@@ -314,7 +323,7 @@ function App(){
 
   return <div className="app-shell">
     <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)}
-      page={page} setPage={setPage} canManageStaff={canManageStaff} />
+      page={page} setPage={setPage} canManageStaff={canManageStaff} profile={profile} />
     <main className="main-area">
       <Header onMenuClick={() => setSidebarOpen(true)} profile={profile} onSignOut={handleSignOut} onProfileClick={() => setShowProfile(true)} />
       {showProfile && <ProfileModal profile={profile} onClose={() => setShowProfile(false)} onSaved={updates => setProfile(p => ({ ...p, ...updates }))} />}
@@ -323,10 +332,16 @@ function App(){
           <StaffManagementPage currentProfile={profile} />
         ) : page === 'Calendar' ? (
           <EventsPage currentProfile={profile} />
+        ) : page === "What's Happening" ? (
+          <WhatsHappeningPage currentProfile={profile} />
+        ) : page === 'FF AI' ? (
+          <AskFutureFocusPage />
+        ) : page === 'Policies' && profile?.permission === 'super_admin' ? (
+          <PoliciesAdminPage />
         ) : (
           <>
             <Hero />
-            <section className="feature-grid">{topCards.map(item=><TopCard key={item.title} item={item}/>)}</section>
+            <section className="feature-grid">{topCards.map(item=><TopCard key={item.title} item={item} onNavigate={setPage}/>)}</section>
             <section className="mid-grid"><NewsPanel/><EventsPanel onViewAll={() => setPage('Calendar')}/><QuickActions/></section>
             <section className="bottom-grid"><CentreSnapshot/><PeoplePanel title="Birthdays" rows={people}/><PeoplePanel title="Anniversaries" rows={anniversaries} anniversary/><Resources/></section>
             <footer><span>GOOD PEOPLE. <b>CURIOUS MINDS.</b> ONE FUTURE FOCUS.</span></footer>
