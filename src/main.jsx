@@ -193,10 +193,19 @@ function ProfileModal({ profile, onClose, onSaved }) {
                 <div className="photo-placeholder"><User size={48}/></div>
               )}
             </div>
-            <label className="photo-upload">
-              <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploading} />
-              <span className="btn-secondary">{uploading ? 'Uploading…' : 'Upload Photo'}</span>
-            </label>
+            <div className="photo-upload-controls">
+              <input 
+                type="file" 
+                id="photo-input"
+                accept="image/*" 
+                onChange={handlePhotoUpload} 
+                disabled={uploading} 
+                style={{display: 'none'}}
+              />
+              <label htmlFor="photo-input" className="btn-secondary" style={{cursor: 'pointer', textAlign: 'center'}}>
+                {uploading ? 'Uploading…' : 'Upload Photo'}
+              </label>
+            </div>
           </div>
 
           <div className="form-row">
