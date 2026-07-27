@@ -4,7 +4,7 @@ import { Plus, Trash2, X, CalendarDays, Clock, Edit2, ChevronLeft, ChevronRight 
 
 const ALL = 'all'
 
-function MonthlyCalendar({ events, month, onMonthChange }) {
+function MonthlyCalendar({ events, month, onMonthChange, onDateClick }) {
   const [hoveredDate, setHoveredDate] = useState(null)
   const [hoveredEvents, setHoveredEvents] = useState([])
 
@@ -31,6 +31,13 @@ function MonthlyCalendar({ events, month, onMonthChange }) {
   function handleDayHover(dateStr) {
     setHoveredDate(dateStr)
     setHoveredEvents(eventsByDate[dateStr] || [])
+  }
+
+  function handleDayClick(dateStr) {
+    const dayEvents = eventsByDate[dateStr]
+    if (dayEvents && dayEvents.length > 0) {
+      onDateClick(dayEvents, dateStr)
+    }
   }
 
   function handlePrevMonth() {
@@ -72,9 +79,10 @@ function MonthlyCalendar({ events, month, onMonthChange }) {
           return (
             <div
               key={i}
-              className={`calendar-day ${isCurrentMonth ? '' : 'other-month'} ${hasEvent ? 'has-event' : ''} ${isToday ? 'today' : ''}`}
+              className={`calendar-day ${isCurrentMonth ? '' : 'other-month'} ${hasEvent ? 'has-event clickable' : ''} ${isToday ? 'today' : ''}`}
               onMouseEnter={() => hasEvent && handleDayHover(dateStr)}
               onMouseLeave={() => setHoveredDate(null)}
+              onClick={() => handleDayClick(dateStr)}
             >
               <span>{day.getDate()}</span>
               {hasEvent && <div className="event-dot"></div>}
@@ -89,6 +97,7 @@ function MonthlyCalendar({ events, month, onMonthChange }) {
           {hoveredEvents.map(event => (
             <div key={event.id} className="tooltip-event">{event.title}</div>
           ))}
+          <div className="tooltip-hint">Click to view details</div>
         </div>
       )}
     </div>
@@ -246,6 +255,8 @@ export function EventsPage({ currentProfile }) {
   const [deleting, setDeleting] = useState(null)
   const [showPastEvents, setShowPastEvents] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState(new Date())
+  const [selectedDateEvents, setSelectedDateEvents] = useState(null)
+  const [selectedDateStr, setSelectedDateStr] = useState(null)
 
   const isAdmin = currentProfile?.permission === 'super_admin'
   const isCentreLeader = currentProfile?.permission === 'centre_leader'
@@ -428,13 +439,69 @@ export function EventsPage({ currentProfile }) {
           </div>
 
           <div className="events-sidebar">
-            <MonthlyCalendar events={events} month={calendarMonth} onMonthChange={setCalendarMonth} />
+            <MonthlyCalendar 
+              events={events} 
+              month={calendarMonth} 
+              onMonthChange={setCalendarMonth}
+              onDateClick={(dayEvents, dateStr) => {
+                setSelectedDateEvents(dayEvents)
+                setSelectedDateStr(dateStr)
+              }}
+            />
           </div>
         </div>
       )}
 
       {showAdd && <AddEventModal onClose={() => setShowAdd(false)} onSaved={loadEvents} callerProfile={currentProfile} />}
       {editingEvent && <EditEventModal event={editingEvent} onClose={() => setEditingEvent(null)} onSaved={loadEvents} callerProfile={currentProfile} />}
+      {selectedDateEvents && (
+        <div className="modal-overlay" onClick={() => setSelectedDateEvents(null)}>
+          <div className="modal-card" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Events on {selectedDateStr ? new Date(selectedDateStr + 'T00:00:00').toLocaleDateString('en-NZ', { weekday: 'long', month: 'long', day: 'numeric' }) : ''}</h2>
+              <button className="modal-close" onClick={() => setSelectedDateEvents(null)}><X size={20}/></button>
+            </div>
+            <div className="staff-form">
+              {selectedDateEvents.map(event => {
+                const { month: m, day } = formatDate(event.date)
+                return (
+                  <div key={event.id} className="event-card" style={{marginBottom: '12px'}}>
+                    <div className="event-date-box">
+                      <small>{m}</small>
+                      <strong>{day}</strong>
+                    </div>
+                    <div className="event-info">
+                      <strong>{event.title}</strong>
+                      <div className="event-meta">
+                        {(event.start_time || event.end_time) && (
+                          <span><Clock size={12}/> {formatTime(event.start_time)}{event.end_time ? ` – ${formatTime(event.end_time)}` : ''}</span>
+                        )}
+                        <span className="event-centre-badge">{event.centre || 'All Centres'}</span>
+                      </div>
+                      {event.description && <p className="event-desc">{event.description}</p>}
+                    </div>
+                    <div className="event-actions">
+                      {canEditEvent(event) && (
+                        <button className="btn-icon-primary" onClick={() => {
+                          setEditingEvent(event)
+                          setSelectedDateEvents(null)
+                        }} title="Edit event">
+                          <Edit2 size={15}/>
+                        </button>
+                      )}
+                      {canDeleteEvent(event) && (
+                        <button className="btn-icon-danger" onClick={() => handleDelete(event)} disabled={deleting === event.id} title="Delete event">
+                          <Trash2 size={15}/>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

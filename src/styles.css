@@ -93,12 +93,15 @@
 .calendar-day span{font-weight:600}
 .calendar-day.other-month{opacity:.4;background:transparent}
 .calendar-day.has-event{background:#eaf7f7;border-color:#9dcc2b}
+.calendar-day.has-event.clickable{cursor:pointer}
+.calendar-day.has-event.clickable:hover{border-color:#005866;box-shadow:0 2px 8px rgba(0,88,102,.12)}
 .calendar-day.today{border-color:#005866;border-width:2px}
 .calendar-day.today span{color:#005866;font-weight:700}
 .event-dot{position:absolute;bottom:2px;width:4px;height:4px;background:#9dcc2b;border-radius:50%}
 .calendar-tooltip{margin-top:12px;padding:10px;background:#f5f9fb;border-radius:8px;border-left:3px solid #005866}
 .tooltip-date{font-size:11px;font-weight:700;color:#005866;margin-bottom:6px}
 .tooltip-event{font-size:11px;color:#374151;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tooltip-hint{font-size:10px;color:#8fa3ad;margin-top:6px;padding-top:6px;border-top:1px solid #e8eff4;font-style:italic}
 
 @media(max-width:1024px){
   .events-container{grid-template-columns:1fr;gap:24px}
