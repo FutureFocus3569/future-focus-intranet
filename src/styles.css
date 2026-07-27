@@ -48,7 +48,9 @@
 .staff-form input,.staff-form select{border:1px solid #d0dde5;border-radius:9px;padding:10px 13px;font-size:13px;color:#0d2b36;outline:none;background:#fff;transition:border .2s}.staff-form input:focus,.staff-form select:focus{border-color:#005866}
 .staff-form select:disabled{background:#f5f9fb;color:#8fa3ad}
 .form-error{background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;border-radius:8px;padding:10px 14px;font-size:13px}
-.form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:8px}
+.form-success{background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:8px;padding:10px 14px;font-size:13px}
+.profile-meta{display:flex;gap:20px;padding:10px 14px;background:#f5f9fb;border-radius:9px;font-size:13px;color:#344a5a}
+.profile{cursor:pointer;border-radius:10px;padding:4px 8px;transition:background .15s}.profile:hover{background:rgba(0,0,0,.05)}
 
 :root{
   --teal:#005766; --teal-deep:#004957; --lime:#96be24; --ink:#143044; --muted:#667582;

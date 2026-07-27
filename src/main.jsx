@@ -110,7 +110,59 @@ function Sidebar({ open, onClose, page, setPage, canManageStaff }) {
   </>
 }
 
-function Header({ onMenuClick, profile, onSignOut }) {
+function ProfileModal({ profile, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    first_name: profile?.first_name ?? '',
+    last_name: profile?.last_name ?? '',
+    mobile: profile?.mobile ?? '',
+    role_title: profile?.role_title ?? '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  function set(field, value) { setForm(f => ({ ...f, [field]: value })); }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setLoading(true); setError('');
+    const { error } = await supabase.from('profiles').update(form).eq('id', profile.id);
+    if (error) { setError(error.message); }
+    else { setSaved(true); onSaved(form); setTimeout(onClose, 1200); }
+    setLoading(false);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card modal-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>My Profile</h2>
+          <button className="modal-close" onClick={onClose}><X size={20}/></button>
+        </div>
+        <form onSubmit={handleSubmit} className="staff-form">
+          <div className="form-row">
+            <label>First Name <input value={form.first_name} onChange={e => set('first_name', e.target.value)} required /></label>
+            <label>Last Name <input value={form.last_name} onChange={e => set('last_name', e.target.value)} required /></label>
+          </div>
+          <label>Mobile <input value={form.mobile} onChange={e => set('mobile', e.target.value)} placeholder="+64 21 123 4567" /></label>
+          <label>Role Title <input value={form.role_title} onChange={e => set('role_title', e.target.value)} placeholder="e.g. Lead Teacher" /></label>
+          <div className="profile-meta">
+            <span><strong>Centre:</strong> {profile?.centre || '—'}</span>
+            <span><strong>Access:</strong> {profile?.permission === 'super_admin' ? 'Super Admin' : profile?.permission === 'centre_leader' ? 'Centre Leader' : 'Staff'}</span>
+          </div>
+          {error && <div className="form-error">{error}</div>}
+          {saved && <div className="form-success">Profile updated!</div>}
+          <div className="form-actions">
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving…' : 'Save Changes'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function Header({ onMenuClick, profile, onSignOut, onProfileClick }) {
   const firstName = profile?.first_name ?? 'there';
   const roleTitle = profile?.role_title ?? '';
   return <header className="topbar">
@@ -119,11 +171,11 @@ function Header({ onMenuClick, profile, onSignOut }) {
     <div className="top-actions">
       <button className="icon-btn"><Bell size={21}/></button>
       <button className="icon-btn notification"><MessageCircle size={21}/><span>2</span></button>
-      <div className="profile">
+      <button className="profile" onClick={onProfileClick} title="Edit your profile">
         <img src="/avatar-main.png"/>
         <div><strong>Kia ora, {firstName}</strong>{roleTitle && <small>{roleTitle}</small>}</div>
         <ChevronDown size={18}/>
-      </div>
+      </button>
       <button className="icon-btn sign-out-btn" onClick={onSignOut} title="Sign out"><LogOut size={19}/></button>
     </div>
   </header>
@@ -201,10 +253,11 @@ function Resources() {
 }
 
 function App(){
-  const [session, setSession] = useState(undefined); // undefined = loading
+  const [session, setSession] = useState(undefined);
   const [profile, setProfile] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [page, setPage] = useState('Home');
+  const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -243,7 +296,8 @@ function App(){
     <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)}
       page={page} setPage={setPage} canManageStaff={canManageStaff} />
     <main className="main-area">
-      <Header onMenuClick={() => setSidebarOpen(true)} profile={profile} onSignOut={handleSignOut} />
+      <Header onMenuClick={() => setSidebarOpen(true)} profile={profile} onSignOut={handleSignOut} onProfileClick={() => setShowProfile(true)} />
+      {showProfile && <ProfileModal profile={profile} onClose={() => setShowProfile(false)} onSaved={updates => setProfile(p => ({ ...p, ...updates }))} />}
       <div className="page-content">
         {page === 'Staff' && canManageStaff ? (
           <StaffManagementPage currentProfile={profile} />
