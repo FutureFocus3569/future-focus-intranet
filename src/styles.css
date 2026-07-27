@@ -129,7 +129,30 @@
 .post-author{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #f0f4f6;font-size:12px;color:#6b7e8a}
 .post-avatar{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#005866,#9dcc2b);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
 
-/* ── Ask Future Focus page ── */
+/* ── Our People page ── */
+.our-people-page{padding:32px 36px;max-width:1200px}
+.centre-section{margin-bottom:48px}
+.centre-title{font-size:22px;font-weight:700;color:#0d2b36;margin:0 0 24px;padding-bottom:12px;border-bottom:2px solid #9dcc2b}
+.relievers-section .centre-title{color:#7c3aed}
+.relievers-section .centre-title::before{content:'🔄 '}
+.people-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px}
+.person-card{background:#fff;border:1px solid #edf2f5;border-radius:14px;overflow:hidden;transition:box-shadow .15s,transform .15s}.person-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.08);transform:translateY(-2px)}
+.person-photo{width:100%;aspect-ratio:1/1;background:#f5f9fb;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.person-photo img{width:100%;height:100%;object-fit:cover}
+.photo-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#eaf7f7,#f5f9fb);color:#d0dde5}
+.person-info{padding:16px;flex:1}
+.person-info h3{font-size:16px;font-weight:700;color:#0d2b36;margin:0 0 4px}
+.person-role{font-size:12px;color:#005866;font-weight:600;margin:0 0 6px}
+.leader-badge{display:inline-block;background:#9dcc2b;color:#0d2b36;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;margin-bottom:8px}
+.person-bio{font-size:12px;color:#6b7e8a;line-height:1.5;margin:0}
+.person-actions{display:flex;gap:6px;padding:0 16px 12px;border-top:1px solid #f0f4f6;justify-content:flex-end}
+.people-empty{text-align:center;padding:48px 20px;color:#8fa3ad;font-size:14px}
+
+@media(max-width:768px){
+  .our-people-page{padding:20px 16px}
+  .centre-title{font-size:18px;margin-bottom:16px}
+  .people-grid{grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+}
 .ask-page{min-height:100vh;background:linear-gradient(135deg,#f5f7f8 0%,#eaf7f7 100%)}
 .ask-hero{display:flex;align-items:center;justify-content:center;padding:60px 20px;text-align:center}
 .ask-hero-content{max-width:600px}

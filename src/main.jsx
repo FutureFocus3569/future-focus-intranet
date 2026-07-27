@@ -13,6 +13,7 @@ import { EventsPage } from './pages/EventsPage.jsx';
 import { WhatsHappeningPage } from './pages/WhatsHappening.jsx';
 import { AskFutureFocusPage } from './pages/AskFutureFocus.jsx';
 import { PoliciesAdminPage } from './pages/PoliciesAdmin.jsx';
+import { OurPeoplePage } from './pages/OurPeoplePage.jsx';
 import './styles.css';
 
 const navItems = [
@@ -332,6 +333,8 @@ function App(){
           <StaffManagementPage currentProfile={profile} />
         ) : page === 'Calendar' ? (
           <EventsPage currentProfile={profile} />
+        ) : page === 'Our People' ? (
+          <OurPeoplePage currentProfile={profile} />
         ) : page === "What's Happening" ? (
           <WhatsHappeningPage currentProfile={profile} />
         ) : page === 'FF AI' ? (
