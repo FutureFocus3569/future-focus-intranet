@@ -52,6 +52,20 @@
 .profile-meta{display:flex;gap:20px;padding:10px 14px;background:#f5f9fb;border-radius:9px;font-size:13px;color:#344a5a}
 .profile{cursor:pointer;border-radius:10px;padding:4px 8px;transition:background .15s}.profile:hover{background:rgba(0,0,0,.05)}
 
+/* ── Events page ── */
+.events-page{padding:32px 36px;max-width:860px}
+.events-filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:28px}
+.filter-tab{border:1px solid #d0dde5;background:#fff;color:#344a5a;border-radius:20px;padding:7px 16px;font-size:13px;cursor:pointer;transition:all .15s}.filter-tab:hover{border-color:#005866;color:#005866}.filter-tab.active{background:#005866;color:#fff;border-color:#005866}
+.event-group{margin-bottom:28px}
+.event-group-header{font-size:12px;font-weight:700;color:#8fa3ad;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #f0f4f6}
+.event-card{display:flex;align-items:flex-start;gap:16px;padding:16px;background:#fff;border:1px solid #edf2f5;border-radius:12px;margin-bottom:10px;transition:box-shadow .15s}.event-card:hover{box-shadow:0 3px 12px rgba(0,0,0,.07)}
+.event-info{flex:1}.event-info>strong{font-size:15px;color:#0d2b36;display:block;margin-bottom:4px}
+.event-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+.event-meta span{display:flex;align-items:center;gap:4px;font-size:12px;color:#6b7e8a}
+.event-centre-badge{background:#eaf7d5;color:#2d6a1f;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600}
+.event-desc{font-size:13px;color:#6b7e8a;margin:6px 0 0;line-height:1.5}
+.staff-form textarea{border:1px solid #d0dde5;border-radius:9px;padding:10px 13px;font-size:13px;color:#0d2b36;outline:none;background:#fff;transition:border .2s;resize:vertical;font-family:inherit}.staff-form textarea:focus{border-color:#005866}
+
 :root{
   --teal:#005766; --teal-deep:#004957; --lime:#96be24; --ink:#143044; --muted:#667582;
   --line:#e4e9ee; --panel:#fff; --bg:#f5f7f8; --shadow:0 5px 20px rgba(27,58,75,.08);

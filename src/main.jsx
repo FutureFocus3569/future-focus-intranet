@@ -9,10 +9,12 @@ import {
 import { supabase } from './lib/supabase.js';
 import { LoginPage } from './pages/Login.jsx';
 import { StaffManagementPage } from './pages/StaffManagement.jsx';
+import { EventsPage } from './pages/EventsPage.jsx';
 import './styles.css';
 
 const navItems = [
-  [Home, 'Home', true],
+  [Home, 'Home'],
+  [CalendarDays, 'Calendar'],
   [Building2, 'Centres'],
   [Users, 'Our People'],
   [GraduationCap, 'Learning'],
@@ -200,8 +202,8 @@ function TopCard({item}) {
   </article>
 }
 
-function SectionHeader({title}) {
-  return <div className="section-header"><h2>{title}</h2><button>View all</button></div>
+function SectionHeader({title, onViewAll}) {
+  return <div className="section-header"><h2>{title}</h2><button onClick={onViewAll}>View all</button></div>
 }
 
 function NewsPanel() {
@@ -215,12 +217,30 @@ function NewsPanel() {
   </section>
 }
 
-function EventsPanel() {
-  return <section className="panel events-panel"><SectionHeader title="Coming Up" />
-    <div className="event-list">{events.map(([m,d,t,time])=><div className="event" key={t}>
-      <div className="date-box"><small>{m}</small><strong>{d}</strong></div>
-      <div><strong>{t}</strong><span>{time}</span></div>
-    </div>)}</div>
+function EventsPanel({ onViewAll }) {
+  const [events, setEvents] = useState([]);
+  useEffect(() => {
+    supabase.from('events').select('*').order('date').order('start_time').limit(5)
+      .then(({ data }) => setEvents(data || []));
+  }, []);
+  function fmt(t) {
+    if (!t) return '';
+    const [h, m] = t.split(':'); const hr = parseInt(h);
+    return `${hr % 12 || 12}:${m} ${hr < 12 ? 'AM' : 'PM'}`;
+  }
+  return <section className="panel events-panel"><SectionHeader title="Coming Up" onViewAll={onViewAll} />
+    <div className="event-list">{events.length === 0
+      ? <p style={{color:'#8fa3ad',fontSize:13,padding:'8px 0'}}>No upcoming events.</p>
+      : events.map(e => {
+          const d = new Date(e.date + 'T00:00:00');
+          const month = d.toLocaleString('en-NZ',{month:'short'}).toUpperCase();
+          const day = d.getDate();
+          return <div className="event" key={e.id}>
+            <div className="date-box"><small>{month}</small><strong>{day}</strong></div>
+            <div><strong>{e.title}</strong><span>{fmt(e.start_time)}{e.end_time ? ` – ${fmt(e.end_time)}` : ''}</span></div>
+          </div>
+        })
+    }</div>
   </section>
 }
 
@@ -301,11 +321,13 @@ function App(){
       <div className="page-content">
         {page === 'Staff' && canManageStaff ? (
           <StaffManagementPage currentProfile={profile} />
+        ) : page === 'Calendar' ? (
+          <EventsPage currentProfile={profile} />
         ) : (
           <>
             <Hero />
             <section className="feature-grid">{topCards.map(item=><TopCard key={item.title} item={item}/>)}</section>
-            <section className="mid-grid"><NewsPanel/><EventsPanel/><QuickActions/></section>
+            <section className="mid-grid"><NewsPanel/><EventsPanel onViewAll={() => setPage('Calendar')}/><QuickActions/></section>
             <section className="bottom-grid"><CentreSnapshot/><PeoplePanel title="Birthdays" rows={people}/><PeoplePanel title="Anniversaries" rows={anniversaries} anniversary/><Resources/></section>
             <footer><span>GOOD PEOPLE. <b>CURIOUS MINDS.</b> ONE FUTURE FOCUS.</span></footer>
           </>
