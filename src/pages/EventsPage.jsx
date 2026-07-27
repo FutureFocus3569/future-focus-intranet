@@ -49,7 +49,7 @@ function MonthlyCalendar({ events, month, onMonthChange, onDateClick }) {
   }
 
   const monthName = month.toLocaleString('en-NZ', { month: 'long', year: 'numeric' })
-  const today = new Date().toISOString().split('T')[0]
+  const today = formatDateLocal(new Date())
 
   return (
     <div className="monthly-calendar">
@@ -71,7 +71,7 @@ function MonthlyCalendar({ events, month, onMonthChange, onDateClick }) {
 
       <div className="calendar-days">
         {days.map((day, i) => {
-          const dateStr = day.toISOString().split('T')[0]
+          const dateStr = formatDateLocal(day)
           const isCurrentMonth = day.getMonth() === monthNum
           const hasEvent = !!eventsByDate[dateStr]?.length
           const isToday = dateStr === today
@@ -246,6 +246,14 @@ function formatDate(dateStr) {
   }
 }
 
+// Format date as YYYY-MM-DD using local time (no timezone conversion)
+function formatDateLocal(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export function EventsPage({ currentProfile }) {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
@@ -295,7 +303,7 @@ export function EventsPage({ currentProfile }) {
     return e.centre === filter || e.centre === null
   })
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = formatDateLocal(new Date())
   const upcomingEvents = filtered.filter(e => e.date >= today)
   const pastEvents = filtered.filter(e => e.date < today)
 
