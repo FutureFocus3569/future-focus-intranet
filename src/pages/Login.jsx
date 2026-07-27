@@ -20,11 +20,7 @@ export function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
-          <div className="ff-mark">FF</div>
-          <div className="brand-copy">
-            <strong>FUTURE<br />FOCUS</strong>
-            <span>STAFF PORTAL</span>
-          </div>
+          <img src="/logo.png" alt="Future Focus" className="login-logo" />
         </div>
         <h2>Welcome back</h2>
         <p className="login-sub">Sign in with your Future Focus account</p>

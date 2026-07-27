@@ -4,7 +4,7 @@ import {
   Home, Building2, Users, GraduationCap, FileText, ClipboardList, Sparkles,
   Inbox, Search, Bell, MessageCircle, ChevronDown, ChevronRight, CalendarDays,
   Wrench, ShieldCheck, LifeBuoy, BookOpen, Leaf, UserRound, Trophy, FolderOpen,
-  Clock3, PartyPopper, HeartHandshake, LayoutDashboard, ExternalLink, Menu, X, LogOut
+  Clock3, PartyPopper, HeartHandshake, LayoutDashboard, ExternalLink, Menu, X, LogOut, User, Edit2, Plus, Trash2
 } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { LoginPage } from './pages/Login.jsx';
@@ -74,11 +74,7 @@ const anniversaries = [
 function Logo() {
   return (
     <div className="brand-lockup">
-      <div className="ff-mark">FF</div>
-      <div className="brand-copy">
-        <strong>FUTURE<br/>FOCUS</strong>
-        <span>CREATING CURIOUS FUTURES</span>
-      </div>
+      <img src="/logo.png" alt="Future Focus" className="sidebar-logo" />
     </div>
   );
 }
@@ -126,16 +122,26 @@ function ProfileModal({ profile, onClose, onSaved }) {
   const [form, setForm] = useState({
     first_name: profile?.first_name ?? '',
     last_name: profile?.last_name ?? '',
+    email: '',
     mobile: profile?.mobile ?? '',
     role_title: profile?.role_title ?? '',
     photo_url: profile?.photo_url ?? '',
     date_of_birth: profile?.date_of_birth ?? '',
     start_date: profile?.start_date ?? '',
+    bio: profile?.bio ?? '',
   });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    async function loadEmail() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) setForm(f => ({ ...f, email: user.email }));
+    }
+    loadEmail();
+  }, []);
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })); }
 
@@ -171,9 +177,23 @@ function ProfileModal({ profile, onClose, onSaved }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true); setError('');
-    const { error } = await supabase.from('profiles').update(form).eq('id', profile.id);
-    if (error) { setError(error.message); }
-    else { setSaved(true); onSaved(form); setTimeout(onClose, 1200); }
+    try {
+      // Update auth email if changed
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email !== form.email) {
+        const { error: emailError } = await supabase.auth.updateUser({ email: form.email });
+        if (emailError) throw emailError;
+      }
+      
+      // Update profile in database (exclude email - it's stored in auth only)
+      const { email, ...profileData } = form;
+      const { error } = await supabase.from('profiles').update(profileData).eq('id', profile.id);
+      if (error) throw error;
+      
+      setSaved(true); onSaved(form); setTimeout(onClose, 1200);
+    } catch (err) {
+      setError(err.message);
+    }
     setLoading(false);
   }
 
@@ -202,7 +222,7 @@ function ProfileModal({ profile, onClose, onSaved }) {
                 disabled={uploading} 
                 style={{display: 'none'}}
               />
-              <label htmlFor="photo-input" className="btn-secondary" style={{cursor: 'pointer', textAlign: 'center'}}>
+              <label htmlFor="photo-input" className="btn-secondary" style={{cursor: 'pointer', textAlign: 'center', display: 'block'}}>
                 {uploading ? 'Uploading…' : 'Upload Photo'}
               </label>
             </div>
@@ -213,8 +233,11 @@ function ProfileModal({ profile, onClose, onSaved }) {
             <label>Last Name <input value={form.last_name} onChange={e => set('last_name', e.target.value)} required /></label>
           </div>
 
+          <label>Email <input type="email" value={form.email} onChange={e => set('email', e.target.value)} required /></label>
           <label>Mobile <input value={form.mobile} onChange={e => set('mobile', e.target.value)} placeholder="+64 21 123 4567" /></label>
           <label>Role Title <input value={form.role_title} onChange={e => set('role_title', e.target.value)} placeholder="e.g. Lead Teacher" /></label>
+
+          <label>Bio <textarea value={form.bio} onChange={e => set('bio', e.target.value)} rows={3} placeholder="Tell us about yourself..." style={{fontFamily: 'inherit'}} /></label>
 
           <div className="form-row">
             <label>Date of Birth <input type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} /></label>
