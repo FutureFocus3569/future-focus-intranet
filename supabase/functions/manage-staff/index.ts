@@ -58,11 +58,10 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Create the auth user — they will receive a password setup email
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        email_confirm: false,
-        user_metadata: { first_name, last_name },
+      // Create the auth user AND send invite email in one step
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        data: { first_name, last_name },
+        redirectTo: 'https://future-focus-intranet-8qax.vercel.app',
       })
 
       if (createError) {
@@ -78,9 +77,6 @@ Deno.serve(async (req) => {
         await supabaseAdmin.auth.admin.deleteUser(newUser.user.id)
         return new Response(JSON.stringify({ error: profileError.message }), { status: 400, headers: corsHeaders })
       }
-
-      // Send invite / password setup email
-      await supabaseAdmin.auth.admin.generateLink({ type: 'invite', email })
 
       return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders })
     }
