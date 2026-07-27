@@ -128,12 +128,45 @@ function ProfileModal({ profile, onClose, onSaved }) {
     last_name: profile?.last_name ?? '',
     mobile: profile?.mobile ?? '',
     role_title: profile?.role_title ?? '',
+    photo_url: profile?.photo_url ?? '',
+    date_of_birth: profile?.date_of_birth ?? '',
+    start_date: profile?.start_date ?? '',
   });
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })); }
+
+  async function handlePhotoUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploading(true);
+    setError('');
+    
+    try {
+      // Generate unique filename
+      const ext = file.name.split('.').pop();
+      const filename = `${profile.id}-${Date.now()}.${ext}`;
+      
+      // Upload to storage
+      const { error: uploadError } = await supabase.storage
+        .from('profile-photos')
+        .upload(filename, file, { upsert: true });
+      
+      if (uploadError) throw uploadError;
+      
+      // Get public URL
+      const { data } = supabase.storage.from('profile-photos').getPublicUrl(filename);
+      set('photo_url', data.publicUrl);
+    } catch (err) {
+      setError('Failed to upload photo: ' + err.message);
+    }
+    
+    setUploading(false);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -146,18 +179,39 @@ function ProfileModal({ profile, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card modal-sm" onClick={e => e.stopPropagation()}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>My Profile</h2>
           <button className="modal-close" onClick={onClose}><X size={20}/></button>
         </div>
         <form onSubmit={handleSubmit} className="staff-form">
+          <div className="photo-upload-section">
+            <div className="photo-preview">
+              {form.photo_url ? (
+                <img src={form.photo_url} alt="Profile photo"/>
+              ) : (
+                <div className="photo-placeholder"><User size={48}/></div>
+              )}
+            </div>
+            <label className="photo-upload">
+              <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={uploading} />
+              <span className="btn-secondary">{uploading ? 'Uploading…' : 'Upload Photo'}</span>
+            </label>
+          </div>
+
           <div className="form-row">
             <label>First Name <input value={form.first_name} onChange={e => set('first_name', e.target.value)} required /></label>
             <label>Last Name <input value={form.last_name} onChange={e => set('last_name', e.target.value)} required /></label>
           </div>
+
           <label>Mobile <input value={form.mobile} onChange={e => set('mobile', e.target.value)} placeholder="+64 21 123 4567" /></label>
           <label>Role Title <input value={form.role_title} onChange={e => set('role_title', e.target.value)} placeholder="e.g. Lead Teacher" /></label>
+
+          <div className="form-row">
+            <label>Date of Birth <input type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} /></label>
+            <label>Start Date <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} /></label>
+          </div>
+
           <div className="profile-meta">
             <span><strong>Centre:</strong> {profile?.centre || '—'}</span>
             <span><strong>Access:</strong> {profile?.permission === 'super_admin' ? 'Super Admin' : profile?.permission === 'centre_leader' ? 'Centre Leader' : 'Staff'}</span>

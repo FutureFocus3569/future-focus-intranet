@@ -171,6 +171,10 @@ export function OurPeoplePage({ currentProfile }) {
                         <h3>{person.first_name} {person.last_name}</h3>
                         {person.role_title && <p className="person-role">{person.role_title}</p>}
                         {person.permission === 'centre_leader' && <span className="leader-badge">Centre Leader</span>}
+                        <div className="person-dates">
+                          {person.start_date && <span>Started: {new Date(person.start_date).toLocaleDateString('en-NZ', { year: 'numeric', month: 'short', day: 'numeric' })}</span>}
+                          {person.date_of_birth && <span>DOB: {new Date(person.date_of_birth).toLocaleDateString('en-NZ', { year: 'numeric', month: 'short', day: 'numeric' })}</span>}
+                        </div>
                         {person.bio && <p className="person-bio">{person.bio}</p>}
                       </div>
                       {(canEditPerson(person) || canDeletePerson(person)) && (

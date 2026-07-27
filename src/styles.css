@@ -49,7 +49,15 @@
 .staff-form select:disabled{background:#f5f9fb;color:#8fa3ad}
 .form-error{background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;border-radius:8px;padding:10px 14px;font-size:13px}
 .form-success{background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:8px;padding:10px 14px;font-size:13px}
+.photo-upload-section{display:flex;gap:20px;align-items:flex-start;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid #e8eff4}
+.photo-preview{width:120px;height:120px;border-radius:12px;background:#f5f9fb;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+.photo-preview img{width:100%;height:100%;object-fit:cover}
+.photo-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#d0dde5}
+.photo-upload{display:flex;flex-direction:column;gap:8px;flex:1}
+.photo-upload input{display:none}
+.photo-upload input:disabled~.btn-secondary{opacity:.6;cursor:not-allowed}
 .profile-meta{display:flex;gap:20px;padding:10px 14px;background:#f5f9fb;border-radius:9px;font-size:13px;color:#344a5a}
+.form-actions{display:flex;gap:12px;justify-content:flex-end;margin-top:20px}
 .profile{cursor:pointer;border-radius:10px;padding:4px 8px;transition:background .15s}.profile:hover{background:rgba(0,0,0,.05)}
 
 /* ── Events page ── */
@@ -145,6 +153,7 @@
 .person-role{font-size:12px;color:#005866;font-weight:600;margin:0 0 6px}
 .leader-badge{display:inline-block;background:#9dcc2b;color:#0d2b36;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;margin-bottom:8px}
 .person-bio{font-size:12px;color:#6b7e8a;line-height:1.5;margin:0}
+.person-dates{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#8fa3ad;margin:4px 0}
 .person-actions{display:flex;gap:6px;padding:0 16px 12px;border-top:1px solid #f0f4f6;justify-content:flex-end}
 .people-empty{text-align:center;padding:48px 20px;color:#8fa3ad;font-size:14px}
 
