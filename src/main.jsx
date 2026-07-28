@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { LoginPage } from './pages/Login.jsx';
+import { PasswordResetPage } from './pages/PasswordReset.jsx';
 import { StaffManagementPage } from './pages/StaffManagement.jsx';
 import { EventsPage } from './pages/EventsPage.jsx';
 import { WhatsHappeningPage } from './pages/WhatsHappening.jsx';
@@ -382,8 +383,16 @@ function App(){
   const [page, setPage] = useState('Home');
   const [showProfile, setShowProfile] = useState(false);
   const [upcomingBirthdays, setUpcomingBirthdays] = useState([]);
+  const [isPasswordReset, setIsPasswordReset] = useState(false);
 
   useEffect(() => {
+    // Check if we're in password reset flow (email link has access_token)
+    const hash = window.location.hash;
+    if (hash.includes('access_token') || hash.includes('type=recovery')) {
+      setIsPasswordReset(true);
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) loadProfile(session.user.id);
@@ -460,6 +469,9 @@ function App(){
   if (session === undefined) {
     return <div className="auth-loading"><div className="ff-mark">FF</div><p>Loading…</p></div>;
   }
+
+  // Password reset flow
+  if (isPasswordReset) return <PasswordResetPage />;
 
   // Not signed in
   if (!session) return <LoginPage />;

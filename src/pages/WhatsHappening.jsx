@@ -495,7 +495,7 @@ export function WhatsHappeningPage({ currentProfile }) {
                   {trendingMostLiked.map(post => (
                     <div key={post.id} className="trend-item" onClick={() => document.getElementById(`post-${post.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
                       <p className="trend-title">{post.title}</p>
-                      <p className="trend-date">{timeAgo(post.created_at)}</p>
+                      <p className="trend-author">{post.author?.first_name} {post.author?.last_name}</p>
                       <span className="trend-stat">👍 {post.likes || 0}</span>
                     </div>
                   ))}
@@ -512,7 +512,7 @@ export function WhatsHappeningPage({ currentProfile }) {
                   {trendingMostViewed.map(post => (
                     <div key={post.id} className="trend-item" onClick={() => document.getElementById(`post-${post.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
                       <p className="trend-title">{post.title}</p>
-                      <p className="trend-date">{timeAgo(post.created_at)}</p>
+                      <p className="trend-author">{post.author?.first_name} {post.author?.last_name}</p>
                       <span className="trend-stat">👁️ {post.views || 0}</span>
                     </div>
                   ))}
