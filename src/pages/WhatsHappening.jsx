@@ -484,9 +484,9 @@ export function WhatsHappeningPage({ currentProfile }) {
         {/* Trends Sidebar */}
         <aside className="whats-happening-sidebar">
           <div className="trends-panel">
-            <h3 className="trends-title">📊 Trending</h3>
+            <h3 className="trends-title">Trending</h3>
             
-            <div className="trends-section">
+            <div className="trends-section trends-section-liked">
               <h4 className="trends-subtitle">Most Liked</h4>
               {trendingMostLiked.length === 0 ? (
                 <p className="trends-empty">No posts yet</p>
@@ -503,7 +503,7 @@ export function WhatsHappeningPage({ currentProfile }) {
               )}
             </div>
 
-            <div className="trends-section">
+            <div className="trends-section trends-section-viewed">
               <h4 className="trends-subtitle">Most Viewed</h4>
               {trendingMostViewed.length === 0 ? (
                 <p className="trends-empty">No posts yet</p>

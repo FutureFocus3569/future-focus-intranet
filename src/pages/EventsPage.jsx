@@ -350,7 +350,7 @@ export function EventsPage({ currentProfile }) {
               <>
                 {upcomingEvents.length > 0 && (
                   <div className="events-section">
-                    <div className="events-section-title">📅 Upcoming Events</div>
+                    <div className="events-section-title">Upcoming Events</div>
                     {Object.entries(upcomingGrouped).map(([month, monthEvents]) => (
                       <div key={month} className="event-group">
                         <div className="event-group-header">{month}</div>

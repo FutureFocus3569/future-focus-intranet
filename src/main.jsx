@@ -358,10 +358,12 @@ function CentreSnapshot() {
   </section>
 }
 
-function PeoplePanel({title, rows, anniversary=false}) {
+function PeoplePanel({title, rows = [], anniversary=false}) {
+  const safeRows = rows && Array.isArray(rows) ? rows : [];
+  const moreCount = Math.max(0, safeRows.length - 2);
   return <section className="panel people-panel"><SectionHeader title={title}/>
-    {rows.map(([name,date,img])=><div className="person-row" key={name}><img src={img}/><div><strong>{name}</strong><span>{date}</span></div>{anniversary ? <Trophy size={18}/> : <PartyPopper size={18}/>}</div>)}
-    <button className="more-link">{anniversary ? '1 more today' : '3 more today'} <ChevronRight size={13}/></button>
+    {safeRows.slice(0, 2).map(([name,date,img])=><div className="person-row" key={name}><img src={img} alt={name}/><div><strong>{name}</strong><span>{date}</span></div>{anniversary ? <Trophy size={18}/> : <PartyPopper size={18}/>}</div>)}
+    {moreCount > 0 && <button className="more-link">{moreCount} more {anniversary ? 'this year' : 'coming up'} <ChevronRight size={13}/></button>}
   </section>
 }
 
@@ -379,6 +381,7 @@ function App(){
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [page, setPage] = useState('Home');
   const [showProfile, setShowProfile] = useState(false);
+  const [upcomingBirthdays, setUpcomingBirthdays] = useState([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -396,6 +399,56 @@ function App(){
   async function loadProfile(userId) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     setProfile(data);
+    loadBirthdays();
+  }
+
+  async function loadBirthdays() {
+    try {
+      const { data: staffList, error } = await supabase.from('profiles').select('first_name, last_name, date_of_birth, photo_url');
+      
+      if (error) {
+        console.error('Error loading birthdays:', error);
+        return;
+      }
+
+      if (!staffList || staffList.length === 0) return;
+
+      const today = new Date();
+      const upcomingList = [];
+
+      staffList.forEach(staff => {
+        if (!staff.date_of_birth) return;
+        
+        const dob = new Date(staff.date_of_birth);
+        const nextBirthday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+        
+        // If birthday has passed this year, check next year
+        if (nextBirthday < today) {
+          nextBirthday.setFullYear(today.getFullYear() + 1);
+        }
+        
+        // Calculate days until birthday
+        const daysUntil = Math.floor((nextBirthday - today) / (1000 * 60 * 60 * 24));
+        
+        // Include if within 30 days
+        if (daysUntil >= 0 && daysUntil <= 30) {
+          const dateStr = nextBirthday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const fullName = `${staff.first_name} ${staff.last_name}`;
+          const photoUrl = staff.photo_url || '/avatar-default.png';
+          upcomingList.push([fullName, dateStr, photoUrl, nextBirthday]);
+        }
+      });
+      
+      // Sort by birthday date
+      upcomingList.sort((a, b) => a[3] - b[3]);
+      // Remove the date object from the array for display
+      upcomingList.forEach(item => item.pop());
+      
+      console.log('Upcoming birthdays:', upcomingList);
+      setUpcomingBirthdays(upcomingList);
+    } catch (err) {
+      console.error('Birthday load error:', err);
+    }
   }
 
   async function handleSignOut() {
