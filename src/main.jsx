@@ -293,6 +293,7 @@ function Hero() {
 function TopCard({item, onNavigate}) {
   const Icon = item.icon;
   return <article className={`top-card ${item.tone}`}>
+    {!item.page && <span className="coming-soon">Coming Soon!</span>}
     <div className="circle-icon"><Icon size={28}/></div>
     <div><h3>{item.title}</h3><p>{item.text}</p><button onClick={() => item.page && onNavigate(item.page)}>{item.link} <ChevronRight size={14}/></button></div>
   </article>
@@ -304,7 +305,8 @@ function SectionHeader({title, onViewAll}) {
 
 function NewsPanel() {
   return <section className="panel news-panel">
-    <SectionHeader title="Happening across Future Focus" />
+    <SectionHeader title="Helping across Future Focus" />
+    <span className="coming-soon">Coming Soon!</span>
     <div className="news-grid">
       {news.map(n => <article className="news-card" key={n.title}>
         <img src={n.image}/><small>{n.date}</small><h3>{n.title}</h3><p>{n.text}</p><button>Read more <ChevronRight size={14}/></button>
@@ -342,6 +344,7 @@ function EventsPanel({ onViewAll }) {
 
 function QuickActions() {
   return <section className="panel action-panel"><SectionHeader title="Quick Actions" />
+    <span className="coming-soon">Coming Soon!</span>
     <div className="actions-grid">{actions.map(([Icon,label])=><button key={label}><span><Icon size={19}/></span><small>{label}</small></button>)}</div>
   </section>
 }
@@ -350,6 +353,7 @@ function Metric({value,label,extra}) { return <div className="metric"><strong>{v
 
 function CentreSnapshot() {
   return <section className="panel snapshot"><SectionHeader title="Centre Snapshot" />
+    <span className="coming-soon">Coming Soon!</span>
     <div className="metric-row"><Metric value="92%" label="Occupancy"/><Metric value="28%" label="Roster"/><Metric value="86%" label="Qualified"/><Metric value="3.2%↑" label="Turnover" extra="West Dune / Our Centre"/></div>
   </section>
 }
@@ -364,6 +368,7 @@ function PeoplePanel({title, rows, anniversary=false}) {
 function Resources() {
   const items = [[BookOpen,'Policies & Procedures'],[Leaf,'Learning Resources'],[ClipboardList,'Forms & Templates'],[FolderOpen,'Staff Handbook']];
   return <section className="panel resources"><SectionHeader title="Resources"/>
+    <span className="coming-soon">Coming Soon!</span>
     {items.map(([Icon,label])=><button className="resource-row" key={label}><Icon size={17}/><span>{label}</span><ChevronRight size={15}/></button>)}
   </section>
 }
