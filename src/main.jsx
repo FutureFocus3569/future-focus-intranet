@@ -280,11 +280,12 @@ function Header({ onMenuClick, profile, onSignOut, onProfileClick }) {
   </header>
 }
 
-function Hero() {
+function Hero({ profile }) {
+  const firstName = profile?.first_name?.toUpperCase() || 'THERE'
   return <section className="hero">
     <div className="hero-overlay" />
     <div className="hero-copy">
-      <h1>KIA ORA,<br/>COURTNEY</h1>
+      <h1>KIA ORA,<br/>{firstName}</h1>
       <p>Everything Future Focus.<br/>One place.</p>
       <span>A PLACE TO BELONG</span>
     </div>
@@ -499,7 +500,7 @@ function App(){
           <PoliciesAdminPage />
         ) : (
           <>
-            <Hero />
+            <Hero profile={profile} />
             <section className="feature-grid">{topCards.map(item=><TopCard key={item.title} item={item} onNavigate={setPage}/>)}</section>
             <section className="mid-grid"><NewsPanel/><EventsPanel onViewAll={() => setPage('Calendar')}/><QuickActions/></section>
             <section className="bottom-grid"><CentreSnapshot/><PeoplePanel title="Birthdays" rows={people}/><PeoplePanel title="Anniversaries" rows={anniversaries} anniversary/><Resources/></section>

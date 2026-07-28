@@ -10,11 +10,11 @@ const CATEGORIES = [
 ]
 
 const TAGS = [
-  { value: 'celebration', label: 'Celebration',  colour: '#7c3aed', bg: '#f5f0ff' },
-  { value: 'news',        label: 'News',          colour: '#0e7490', bg: '#ecfeff' },
+  { value: 'celebration', label: 'Celebration',  colour: '#1a6eb5', bg: '#e6eff9' },
+  { value: 'news',        label: 'News',          colour: '#1a6eb5', bg: '#e6eff9' },
   { value: 'events',      label: 'Events',        colour: '#1a6eb5', bg: '#e6eff9' },
-  { value: 'reminder',    label: 'Reminder',      colour: '#b45309', bg: '#fef3c7' },
-  { value: 'learning',    label: 'Learning',      colour: '#065f46', bg: '#d1fae5' },
+  { value: 'reminder',    label: 'Reminder',      colour: '#0e9a8a', bg: '#e6f5f2' },
+  { value: 'learning',    label: 'Learning',      colour: '#0e9a8a', bg: '#e6f5f2' },
   { value: 'wellbeing',   label: 'Wellbeing',     colour: '#0e9a8a', bg: '#e6f5f2' },
 ]
 
@@ -496,7 +496,7 @@ export function WhatsHappeningPage({ currentProfile }) {
                     <div key={post.id} className="trend-item" onClick={() => document.getElementById(`post-${post.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
                       <p className="trend-title">{post.title}</p>
                       <p className="trend-author">{post.author?.first_name} {post.author?.last_name}</p>
-                      <span className="trend-stat">👍 {post.likes || 0}</span>
+                      <span className="trend-badge"><span className="trend-badge-icon">👍</span> {post.likes || 0}</span>
                     </div>
                   ))}
                 </div>
@@ -513,7 +513,7 @@ export function WhatsHappeningPage({ currentProfile }) {
                     <div key={post.id} className="trend-item" onClick={() => document.getElementById(`post-${post.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
                       <p className="trend-title">{post.title}</p>
                       <p className="trend-author">{post.author?.first_name} {post.author?.last_name}</p>
-                      <span className="trend-stat">👁️ {post.views || 0}</span>
+                      <span className="trend-badge"><span className="trend-badge-icon">👁️</span> {post.views || 0}</span>
                     </div>
                   ))}
                 </div>

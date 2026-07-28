@@ -125,6 +125,15 @@ export function OurPeoplePage({ currentProfile }) {
     groupedBycentre[p.centre].push(p)
   })
 
+  // Sort each centre's staff so Centre Leaders appear first
+  centreList.forEach(c => {
+    groupedBycentre[c].sort((a, b) => {
+      if (a.permission === 'centre_leader' && b.permission !== 'centre_leader') return -1
+      if (a.permission !== 'centre_leader' && b.permission === 'centre_leader') return 1
+      return a.first_name.localeCompare(b.first_name)
+    })
+  })
+
   // Separate relievers
   const relievers = staff.filter(p => p.permission === 'staff' && !p.centre)
   const centreStaff = centreList.map(c => ({
