@@ -124,6 +124,46 @@
   .calendar-header h3{font-size:13px}
 }
 
+/* ── Wellbeing check-in ── */
+.wellbeing-checkin-card{padding:8px 0 0;background:transparent}
+.wellbeing-checkin-loading{padding:24px;background:#f5f7f9;border-radius:12px;text-align:center;color:#8fa3ad}
+.wellbeing-checkin-success{padding:20px 16px;background:#f0fdf4;border-radius:12px;border:1px solid #bbf7d0}
+.wellbeing-checkin-layout{display:flex;gap:16px;align-items:flex-start}
+.wellbeing-checkin-faces{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:8px}
+.wellbeing-checkin-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:8px}
+.wellbeing-checkin-option{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+.wellbeing-checkin-button{background:none;border:none;padding:0;cursor:pointer;display:block;transition:all 0.2s}
+.wellbeing-checkin-button img{width:100%;max-width:135px;height:auto;display:block;margin:0 auto}
+.wellbeing-checkin-label{font-size:10px;font-weight:600;color:#0d2b36;text-align:center}
+.wellbeing-checkin-mi{font-size:9px;color:#6b8e7b;text-align:center;line-height:1.2}
+.wellbeing-checkin-divider{width:20px;height:2px}
+.wellbeing-checkin-footer{font-size:11px;color:#6b8e7b;padding-top:8px;border-top:1px solid #e0e0e0;text-align:center}
+.wellbeing-checkin-form{flex:0 0 180px;display:flex;flex-direction:column;gap:8px;max-width:100%}
+.wellbeing-checkin-textarea{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box;line-height:1.4;min-height:84px}
+.wellbeing-checkin-error{font-size:11px;color:#dc2626;padding:6px 10px;background:#fee2e2;border-radius:6px}
+.wellbeing-checkin-submit{width:100%;padding:8px 16px;color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.2s}
+.wellbeing-checkin-submit:disabled{opacity:.6;cursor:not-allowed}
+
+@media (max-width: 768px){
+  .wellbeing-checkin-layout{flex-direction:column}
+  .wellbeing-checkin-form{flex:1 1 auto;width:100%}
+  .wellbeing-checkin-grid{gap:6px}
+  .wellbeing-checkin-button img{max-width:92px}
+  .wellbeing-checkin-label{font-size:9px}
+  .wellbeing-checkin-mi{font-size:8px;min-height:2.2em}
+}
+
+@media (max-width: 480px){
+  .wellbeing-checkin-card{padding:6px 0 0}
+  .wellbeing-checkin-grid{gap:4px}
+  .wellbeing-checkin-button img{max-width:72px}
+  .wellbeing-checkin-label{font-size:8px}
+  .wellbeing-checkin-mi{font-size:7px;line-height:1.1}
+  .wellbeing-checkin-textarea{min-height:72px;font-size:11px;padding:8px}
+  .wellbeing-checkin-submit{font-size:11px;padding:8px 12px}
+  .wellbeing-checkin-footer{font-size:10px}
+}
+
 /* ── What's Happening page ── */
 .whats-happening-page{padding:32px 36px;max-width:1400px}
 .whats-happening-container{display:grid;grid-template-columns:1fr 320px;gap:24px}
