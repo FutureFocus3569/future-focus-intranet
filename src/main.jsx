@@ -14,7 +14,11 @@ import { EventsPage } from './pages/EventsPage.jsx';
 import { WhatsHappeningPage } from './pages/WhatsHappening.jsx';
 import { AskFutureFocusPage } from './pages/AskFutureFocus.jsx';
 import { PoliciesAdminPage } from './pages/PoliciesAdmin.jsx';
+import { PoliciesForReviewPage } from './pages/PoliciesForReview.jsx';
 import { OurPeoplePage } from './pages/OurPeoplePage.jsx';
+import { KnowledgeCentrePage } from './pages/KnowledgeCentre.jsx';
+import { isDocumentVisibleForCentre, isPolicyOpenForFeedback } from './lib/policyReview.js';
+import WellbeingCheckin from './components/WellbeingCheckin.jsx';
 import './styles.css';
 
 const navItems = [
@@ -23,7 +27,6 @@ const navItems = [
   [Building2, 'Centres'],
   [Users, 'Our People'],
   [GraduationCap, 'Learning'],
-  [FileText, 'Policies'],
   [ClipboardList, 'Forms'],
   [Sparkles, 'FF AI'],
   [Inbox, 'Inbox'],
@@ -59,7 +62,7 @@ const events = [
 
 const actions = [
   [CalendarDays, 'Leave'], [Wrench, 'Maintenance'], [ClipboardList, 'Forms'],
-  [FileText, 'Policies'], [Users, 'Staff Directory'], [LifeBuoy, 'Help'],
+  [Users, 'Staff Directory'], [LifeBuoy, 'Help'],
 ];
 
 const people = [
@@ -99,10 +102,10 @@ function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
             <Users size={19} strokeWidth={1.9} /> <span>Staff</span>
           </button>
         )}
-        {profile?.permission === 'super_admin' && (
-          <button className={`nav-item ${page === 'Policies' ? 'active' : ''}`}
-            onClick={() => { setPage('Policies'); onClose(); }}>
-            <FileText size={19} strokeWidth={1.9} /> <span>Manage Policies</span>
+        {(profile?.permission === 'super_admin' || profile?.permission === 'policy_admin') && (
+          <button className={`nav-item ${page === 'Knowledge Centre' ? 'active' : ''}`}
+            onClick={() => { setPage('Knowledge Centre'); onClose(); }}>
+            <BookOpen size={19} strokeWidth={1.9} /> <span>Knowledge Centre</span>
           </button>
         )}
       </nav>
@@ -320,7 +323,8 @@ function NewsPanel() {
 function EventsPanel({ onViewAll }) {
   const [events, setEvents] = useState([]);
   useEffect(() => {
-    supabase.from('events').select('*').order('date').order('start_time').limit(5)
+    const today = new Date().toISOString().split('T')[0];
+    supabase.from('events').select('*').gte('date', today).order('date').order('start_time').limit(5)
       .then(({ data }) => setEvents(data || []));
   }, []);
   function fmt(t) {
@@ -344,20 +348,34 @@ function EventsPanel({ onViewAll }) {
   </section>
 }
 
-function QuickActions() {
+function QuickActions({ onNavigate, openReviewCount }) {
   return <section className="panel action-panel"><SectionHeader title="Quick Actions" />
-    <span className="coming-soon">Coming Soon!</span>
-    <div className="actions-grid">{actions.map(([Icon,label])=><button key={label}><span><Icon size={19}/></span><small>{label}</small></button>)}</div>
+    <div className="actions-grid">
+      {actions.map(([Icon,label]) => <button key={label} onClick={() => onNavigate?.(label)}><span><Icon size={19}/></span><small>{label}</small></button>)}
+      <button className="quick-action-review" onClick={() => onNavigate?.('Policies for Review')}>
+        <span style={{ position: 'relative', display: 'inline-flex' }}><FileText size={19} />{openReviewCount > 0 && <span className="review-badge">{openReviewCount}</span>}</span>
+        <small>Policies for Review</small>
+      </button>
+    </div>
   </section>
 }
 
 function Metric({value,label,extra}) { return <div className="metric"><strong>{value}</strong><span>{label}</span>{extra && <small>{extra}</small>}</div> }
 
 function CentreSnapshot() {
-  return <section className="panel snapshot"><SectionHeader title="Centre Snapshot" />
+  return <section className="panel snapshot">
+    <SectionHeader title="Centre Snapshot" />
     <span className="coming-soon">Coming Soon!</span>
-    <div className="metric-row"><Metric value="92%" label="Occupancy"/><Metric value="28%" label="Roster"/><Metric value="86%" label="Qualified"/><Metric value="3.2%↑" label="Turnover" extra="West Dune / Our Centre"/></div>
   </section>
+}
+
+function WellbeingSection({ userId, centreName }) {
+  return (
+    <section className="panel" style={{ marginTop: 16, marginBottom: 16 }}>
+      <SectionHeader title="Daily Wellbeing Check-in" />
+      <WellbeingCheckin userId={userId} centreName={centreName} />
+    </section>
+  )
 }
 
 function PeoplePanel({title, rows = [], anniversary=false}) {
@@ -385,6 +403,7 @@ function App(){
   const [showProfile, setShowProfile] = useState(false);
   const [upcomingBirthdays, setUpcomingBirthdays] = useState([]);
   const [isPasswordReset, setIsPasswordReset] = useState(false);
+  const [openReviewCount, setOpenReviewCount] = useState(0);
 
   useEffect(() => {
     // Check if we're in password reset flow (email link has access_token)
@@ -461,6 +480,30 @@ function App(){
     }
   }
 
+  async function loadOpenReviewCount() {
+    if (!profile?.id) return
+    try {
+      const { data } = await supabase
+        .from('documents')
+        .select('id, review_feedback_opens_at, review_feedback_closes_at, is_current_version, status, is_centre_specific, centre_scope')
+        .eq('status', 'published')
+        .eq('is_current_version', true)
+
+      const visibleCount = (data || []).filter(doc => {
+        if (!isPolicyOpenForFeedback(doc)) return false
+        return isDocumentVisibleForCentre(doc, profile?.centre)
+      }).length
+
+      setOpenReviewCount(visibleCount)
+    } catch {
+      setOpenReviewCount(0)
+    }
+  }
+
+  useEffect(() => {
+    if (profile) loadOpenReviewCount()
+  }, [profile?.id, profile?.centre])
+
   async function handleSignOut() {
     await supabase.auth.signOut();
     setPage('Home');
@@ -495,15 +538,22 @@ function App(){
         ) : page === "What's Happening" ? (
           <WhatsHappeningPage currentProfile={profile} />
         ) : page === 'FF AI' ? (
-          <AskFutureFocusPage />
-        ) : page === 'Policies' && profile?.permission === 'super_admin' ? (
-          <PoliciesAdminPage />
+          <AskFutureFocusPage currentProfile={profile} />
+        ) : page === 'Policies for Review' ? (
+          <PoliciesForReviewPage currentProfile={profile} />
+        ) : page === 'Knowledge Centre' && (profile?.permission === 'super_admin' || profile?.permission === 'policy_admin') ? (
+          <KnowledgeCentrePage currentProfile={profile} />
         ) : (
           <>
             <Hero profile={profile} />
             <section className="feature-grid">{topCards.map(item=><TopCard key={item.title} item={item} onNavigate={setPage}/>)}</section>
-            <section className="mid-grid"><NewsPanel/><EventsPanel onViewAll={() => setPage('Calendar')}/><QuickActions/></section>
-            <section className="bottom-grid"><CentreSnapshot/><PeoplePanel title="Birthdays" rows={people}/><PeoplePanel title="Anniversaries" rows={anniversaries} anniversary/><Resources/></section>
+            <section className="mid-grid"><NewsPanel/><EventsPanel onViewAll={() => setPage('Calendar')}/><QuickActions onNavigate={setPage} openReviewCount={openReviewCount}/></section>
+            <section className="bottom-grid"><CentreSnapshot /><PeoplePanel title="Birthdays" rows={people}/><PeoplePanel title="Anniversaries" rows={anniversaries} anniversary/><Resources/></section>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr .95fr .95fr 1.2fr', gap: 16, marginTop: 16, marginBottom: 16 }}>
+              <div style={{ gridColumn: 'span 2' }}>
+                <WellbeingSection userId={profile?.id} centreName={profile?.centre} />
+              </div>
+            </div>
             <footer><span>GOOD PEOPLE. <b>CURIOUS MINDS.</b> ONE FUTURE FOCUS.</span></footer>
           </>
         )}

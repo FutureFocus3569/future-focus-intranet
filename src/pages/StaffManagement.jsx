@@ -5,6 +5,19 @@ import { Users, Plus, Trash2, ChevronDown, X, Search } from 'lucide-react'
 const PERMISSION_LABELS = { super_admin: 'Super Admin', centre_leader: 'Centre Leader', staff: 'Staff' }
 const PERMISSION_COLOURS = { super_admin: '#005866', centre_leader: '#7c3aed', staff: '#374151' }
 
+function getApiErrorMessage(payload, fallback) {
+  if (!payload) return fallback
+  if (typeof payload === 'string') {
+    const normalized = payload.trim()
+    if (!normalized || normalized === '{}' || normalized === '[]' || normalized === '[object Object]') return fallback
+    return normalized
+  }
+  if (typeof payload.error === 'string') return payload.error
+  if (payload.error && typeof payload.error.message === 'string') return payload.error.message
+  if (typeof payload.message === 'string') return payload.message
+  return fallback
+}
+
 function AddStaffModal({ onClose, onSuccess, callerProfile }) {
   const isAdmin = callerProfile?.permission === 'super_admin'
   const [form, setForm] = useState({
@@ -14,6 +27,7 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
     permission: 'staff',
     date_of_birth: '',
     start_date: '',
+    invite_message: '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -38,12 +52,12 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
           body: JSON.stringify(form),
         }
       )
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(getApiErrorMessage(data, 'Could not add staff member.'))
       onSuccess()
       onClose()
     } catch (err) {
-      setError(err.message)
+      setError(err.message || 'Could not add staff member.')
     }
     setLoading(false)
   }
@@ -86,6 +100,14 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
                 ))}
             </select>
           </label>
+          <label>Invite Message (optional)
+            <textarea
+              value={form.invite_message}
+              onChange={e => set('invite_message', e.target.value)}
+              rows={3}
+              placeholder="Optional personal message for the invite email"
+            />
+          </label>
           {error && <div className="form-error">{error}</div>}
           <div className="form-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
@@ -125,6 +147,7 @@ export function StaffManagementPage({ currentProfile }) {
   const [showAdd, setShowAdd] = useState(false)
   const [removing, setRemoving] = useState(null)
   const [removeLoading, setRemoveLoading] = useState(false)
+  const [removeError, setRemoveError] = useState('')
 
   const isAdmin = currentProfile?.permission === 'super_admin'
   const isCentreLeader = currentProfile?.permission === 'centre_leader'
@@ -141,7 +164,9 @@ export function StaffManagementPage({ currentProfile }) {
   }
 
   async function handleRemove() {
+    if (!removing?.id) return
     setRemoveLoading(true)
+    setRemoveError('')
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(
@@ -156,8 +181,16 @@ export function StaffManagementPage({ currentProfile }) {
           body: JSON.stringify({ userId: removing.id }),
         }
       )
-      if (res.ok) { setRemoving(null); loadStaff() }
-    } catch (err) { console.error(err) }
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) throw new Error(getApiErrorMessage(data, 'Could not remove staff member.'))
+
+      setRemoving(null)
+      await loadStaff()
+    } catch (err) {
+      console.error(err)
+      setRemoveError(err.message || 'Could not remove staff member.')
+    }
     setRemoveLoading(false)
   }
 
@@ -236,7 +269,22 @@ export function StaffManagementPage({ currentProfile }) {
       )}
 
       {showAdd && <AddStaffModal onClose={() => setShowAdd(false)} onSuccess={loadStaff} callerProfile={currentProfile} />}
-      {removing && <RemoveConfirm staff={removing} onClose={() => setRemoving(null)} onConfirm={handleRemove} loading={removeLoading} />}
+      {removing && (
+        <div className="modal-overlay" onClick={() => setRemoving(null)}>
+          <div className="modal-card modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Remove Staff Member</h2>
+              <button className="modal-close" onClick={() => setRemoving(null)}><X size={20} /></button>
+            </div>
+            <p>Are you sure you want to remove <strong>{removing.first_name} {removing.last_name}</strong>? This will permanently delete their account and they will lose all access.</p>
+            {removeError && <div className="form-error" style={{ marginTop: 8 }}>{removeError}</div>}
+            <div className="form-actions">
+              <button className="btn-secondary" onClick={() => setRemoving(null)}>Cancel</button>
+              <button className="btn-danger" onClick={handleRemove} disabled={removeLoading}>{removeLoading ? 'Removing…' : 'Yes, Remove'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

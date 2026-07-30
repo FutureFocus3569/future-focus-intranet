@@ -18,8 +18,19 @@ const TAGS = [
   { value: 'wellbeing',   label: 'Wellbeing',     colour: '#0e9a8a', bg: '#e6f5f2' },
 ]
 
+const CENTRE_COLORS = {
+  'All Centres': { text: '#fff', bg: '#0e9a8a' },
+  'Papamoa Beach': { text: '#fff', bg: '#1a6eb5' },
+  'The Boulevard': { text: '#fff', bg: '#0e9a8a' },
+  'Terrace Views': { text: '#fff', bg: '#0084b3' },
+  'Livingstone': { text: '#fff', bg: '#12956d' },
+  'West Dune': { text: '#fff', bg: '#3b82c4' },
+  'Head Office': { text: '#fff', bg: '#2eb89f' },
+}
+
 function getTag(value) { return TAGS.find(t => t.value === value) }
 function getCat(value) { return CATEGORIES.find(c => c.value === value) || CATEGORIES[2] }
+function getCentreColor(centre) { return CENTRE_COLORS[centre] || { text: '#fff', bg: '#6b7e8a' } }
 
 function PostModal({ onClose, onSaved, callerProfile, editing }) {
   const isAdmin = callerProfile?.permission === 'super_admin'
@@ -332,8 +343,8 @@ export function WhatsHappeningPage({ currentProfile }) {
   const years = Object.keys(byYear).map(Number).sort((a, b) => b - a)
 
   // Get trending posts
-  const trendingMostLiked = [...filtered].sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 5)
-  const trendingMostViewed = [...filtered].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 5)
+  const trendingMostLiked = [...filtered].sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 3)
+  const trendingMostViewed = [...filtered].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 3)
 
   function toggleYear(yr) {
     setExpandedYears(prev => ({ ...prev, [yr]: !prev[yr] }))
@@ -342,6 +353,8 @@ export function WhatsHappeningPage({ currentProfile }) {
   function renderPostCard(post) {
     const cat = getCat(post.category)
     const CatIcon = cat.Icon
+    const centreName = post.centre || 'All Centres'
+    const centreColor = getCentreColor(centreName)
     return (
       <article className="post-card" key={post.id} id={`post-${post.id}`}>
         <div className="post-card-header">
@@ -349,9 +362,19 @@ export function WhatsHappeningPage({ currentProfile }) {
             <span className="post-category-badge" style={{ background: cat.bg, color: cat.colour }}>
               <CatIcon size={12}/> {cat.label}
             </span>
-            <span className="post-centre-badge">{post.centre || 'All Centres'}</span>
-            <span className="post-time">{timeAgo(post.created_at)}</span>
+            <span className="post-centre-badge" style={{ background: centreColor.bg, color: centreColor.text }}>{centreName}</span>
           </div>
+          {post.tags && post.tags.length > 0 && (
+            <div className="post-tags-indicator" title={`${post.tags.length} tag${post.tags.length > 1 ? 's' : ''}`}>
+              <div className="post-tags-dot"></div>
+              <div className="post-tags-tooltip">
+                {post.tags.map(t => {
+                  const tag = getTag(t)
+                  return tag ? <span key={t} className="post-tag-badge" style={{ background: tag.bg, color: tag.colour }}>{tag.label}</span> : null
+                })}
+              </div>
+            </div>
+          )}
           <div className="post-card-actions">
             {canEdit(post) && (
               <button className="btn-icon-edit" onClick={() => setEditing(post)} title="Edit post"><Edit2 size={14}/></button>
@@ -362,9 +385,9 @@ export function WhatsHappeningPage({ currentProfile }) {
           </div>
         </div>
         <div className="post-card-content">
-          <h2 className="post-title">{post.title}</h2>
+          <h2 className="post-title" title={post.title}>{post.title}</h2>
           <p className="post-body">{post.body}</p>
-          {post.images && post.images.length > 0 && (
+          {post.images && post.images.length > 0 ? (
             <div className={`post-images post-images-${post.images.length}`}>
               {post.images.map((url, i) => (
                 <a key={i} href={url} target="_blank" rel="noopener noreferrer">
@@ -372,15 +395,12 @@ export function WhatsHappeningPage({ currentProfile }) {
                 </a>
               ))}
             </div>
-          )}
-          {post.tags && post.tags.length > 0 && (
-            <div className="post-tags">
-              {post.tags.map(t => {
-                const tag = getTag(t)
-                return tag ? <span key={t} className="post-tag-badge" style={{ background: tag.bg, color: tag.colour }}>{tag.label}</span> : null
-              })}
+          ) : (
+            <div className="post-image-placeholder" style={{ background: centreColor.bg }}>
+              <span className="post-image-placeholder-text">{centreName}</span>
             </div>
           )}
+
           {post.attachment_url && (
             <a className="post-attachment-link" href={post.attachment_url} target="_blank" rel="noopener noreferrer">
               <FileText size={15}/> {post.attachment_name || 'Download attachment'}
@@ -390,7 +410,10 @@ export function WhatsHappeningPage({ currentProfile }) {
         {post.author && (
           <div className="post-author">
             <div className="post-avatar">{post.author.first_name?.[0]}{post.author.last_name?.[0]}</div>
-            <span>{post.author.first_name} {post.author.last_name}</span>
+            <div className="post-author-info">
+              <span>{post.author.first_name} {post.author.last_name}</span>
+              <span className="post-time">{timeAgo(post.created_at)}</span>
+            </div>
             <button className={`post-like-btn ${userLikes.has(post.id) ? 'liked' : ''}`} onClick={() => handleLike(post.id)} disabled={liking === post.id} title="Like this post">
               <ThumbsUp size={14}/> {post.likes || 0}
             </button>
@@ -415,13 +438,13 @@ export function WhatsHappeningPage({ currentProfile }) {
       <div className="whats-happening-container">
         <div className="whats-happening-main">
           <div className="events-filter-bar">
-            <button className={`filter-tab ${centreFilter === 'all' ? 'active' : ''}`} onClick={() => setCentreFilter('all')}>All Centres + Company-wide</button>
+            <button className={`filter-tab ${centreFilter === 'all' ? 'active' : ''}`} onClick={() => setCentreFilter('all')} style={centreFilter === 'all' ? { background: getCentreColor('All Centres').bg, borderColor: getCentreColor('All Centres').bg } : {}}>All Centres + Company-wide</button>
             {isAdmin ? (
               CENTRES.map(c => (
-                <button key={c} className={`filter-tab ${centreFilter === c ? 'active' : ''}`} onClick={() => setCentreFilter(c)}>{c}</button>
+                <button key={c} className={`filter-tab ${centreFilter === c ? 'active' : ''}`} onClick={() => setCentreFilter(c)} style={centreFilter === c ? { background: getCentreColor(c).bg, borderColor: getCentreColor(c).bg } : {}}>{c}</button>
               ))
             ) : (
-              <button className={`filter-tab ${centreFilter === currentProfile?.centre ? 'active' : ''}`} onClick={() => setCentreFilter(currentProfile?.centre)}>
+              <button className={`filter-tab ${centreFilter === currentProfile?.centre ? 'active' : ''}`} onClick={() => setCentreFilter(currentProfile?.centre)} style={centreFilter === currentProfile?.centre ? { background: getCentreColor(currentProfile?.centre).bg, borderColor: getCentreColor(currentProfile?.centre).bg } : {}}>
                 {currentProfile?.centre}
               </button>
             )}

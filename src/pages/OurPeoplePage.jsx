@@ -85,6 +85,32 @@ export function OurPeoplePage({ currentProfile }) {
   const isAdmin = currentProfile?.permission === 'super_admin'
   const isCentreLeader = currentProfile?.permission === 'centre_leader'
 
+  function calculateTenure(startDate) {
+    if (!startDate) return ''
+    const start = new Date(startDate)
+    const now = new Date()
+    const years = now.getFullYear() - start.getFullYear()
+    const months = now.getMonth() - start.getMonth()
+    
+    if (years === 0 && months === 0) return 'Just started'
+    if (years === 0) return `${months} month${months !== 1 ? 's' : ''}`
+    if (months < 0) return `${years - 1} year${years - 1 !== 1 ? 's' : ''}`
+    return `${years} year${years !== 1 ? 's' : ''} ${months} month${months !== 1 ? 's' : ''}`
+  }
+
+  const CENTRE_COLORS = {
+    'Papamoa Beach': '#1a6eb5',
+    'The Boulevard': '#0e9a8a',
+    'Terrace Views': '#0084b3',
+    'Livingstone': '#12956d',
+    'West Dune': '#3b82c4',
+    'Head Office': '#2eb89f',
+  }
+
+  function getCentreColor(centre) {
+    return CENTRE_COLORS[centre] || '#9dcc2b'
+  }
+
   useEffect(() => { loadStaff() }, [])
 
   async function loadStaff() {
@@ -161,7 +187,7 @@ export function OurPeoplePage({ currentProfile }) {
         <>
           {centreStaff.map(({ centre, people }) => (
             <div key={centre} className="centre-section">
-              <h2 className="centre-title">{centre}</h2>
+              <h2 className="centre-title" style={{ borderBottomColor: getCentreColor(centre) }}>{centre}</h2>
               
               {people.length === 0 ? (
                 <div className="people-empty">No staff members at this centre yet.</div>
@@ -181,10 +207,8 @@ export function OurPeoplePage({ currentProfile }) {
                         {person.role_title && <p className="person-role">{person.role_title}</p>}
                         {person.permission === 'centre_leader' && <span className="leader-badge">Centre Leader</span>}
                         <div className="person-dates">
-                          {person.start_date && <span>Started: {new Date(person.start_date).toLocaleDateString('en-NZ', { year: 'numeric', month: 'short', day: 'numeric' })}</span>}
-                          {person.date_of_birth && <span>DOB: {new Date(person.date_of_birth).toLocaleDateString('en-NZ', { year: 'numeric', month: 'short', day: 'numeric' })}</span>}
+                          {person.start_date && <span>{calculateTenure(person.start_date)}</span>}
                         </div>
-                        {person.bio && <p className="person-bio">{person.bio}</p>}
                       </div>
                       {(canEditPerson(person) || canDeletePerson(person)) && (
                         <div className="person-actions">
@@ -226,7 +250,6 @@ export function OurPeoplePage({ currentProfile }) {
                     <div className="person-info">
                       <h3>{person.first_name} {person.last_name}</h3>
                       {person.role_title && <p className="person-role">{person.role_title}</p>}
-                      {person.bio && <p className="person-bio">{person.bio}</p>}
                     </div>
                     <div className="person-actions">
                       {canEditPerson(person) && (

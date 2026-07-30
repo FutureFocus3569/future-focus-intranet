@@ -17,5 +17,6 @@ export const CENTRES = [
 export const PERMISSIONS = [
   { value: 'super_admin', label: 'Super Admin', description: 'Full access — all centres, all staff' },
   { value: 'centre_leader', label: 'Centre Leader', description: 'Manage staff at their centre' },
+  { value: 'policy_admin', label: 'Policy Admin', description: 'Manage documents in Knowledge Centre' },
   { value: 'staff', label: 'Staff', description: 'Standard access — view only' },
 ]

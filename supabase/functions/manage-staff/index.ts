@@ -2,7 +2,45 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+function toErrorMessage(err: unknown, fallback = 'Unexpected server error') {
+  if (!err) return fallback
+  if (typeof err === 'string') return err
+  if (err instanceof Error && err.message) return err.message
+  if (typeof err === 'object') {
+    const maybeMessage = (err as { message?: unknown }).message
+    if (typeof maybeMessage === 'string' && maybeMessage.trim()) return maybeMessage
+    try {
+      const serialized = JSON.stringify(err)
+      if (serialized && serialized !== '{}' && serialized !== '[]') return serialized
+    } catch {}
+  }
+  return fallback
+}
+
+function normalizeDateInput(value: unknown): string | null {
+  if (!value || typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  // Already ISO date format.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+
+  // Support dd/mm/yyyy from locale-formatted browser inputs.
+  const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) {
+    const day = dmy[1].padStart(2, '0')
+    const month = dmy[2].padStart(2, '0')
+    const year = dmy[3]
+    return `${year}-${month}-${day}`
+  }
+
+  const parsed = new Date(trimmed)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString().slice(0, 10)
 }
 
 Deno.serve(async (req) => {
@@ -30,7 +68,7 @@ Deno.serve(async (req) => {
 
     const { data: callerProfile } = await supabaseClient
       .from('profiles')
-      .select('permission, centre')
+      .select('permission, centre, first_name, last_name')
       .eq('id', user.id)
       .single()
 
@@ -46,7 +84,17 @@ Deno.serve(async (req) => {
     )
 
     if (req.method === 'POST') {
-      const { first_name, last_name, email, mobile, centre, role_title, permission, date_of_birth, start_date } = await req.json()
+      const { first_name, last_name, email, mobile, centre, role_title, permission, date_of_birth, start_date, invite_message } = await req.json()
+
+      const dob = normalizeDateInput(date_of_birth)
+      const start = normalizeDateInput(start_date)
+
+      const redirectTo =
+        Deno.env.get('INVITE_REDIRECT_URL') ||
+        Deno.env.get('SITE_URL') ||
+        'https://future-focus-intranet.vercel.app'
+
+      const inviterName = [callerProfile?.first_name, callerProfile?.last_name].filter(Boolean).join(' ').trim()
 
       // Centre leaders can only add staff (not admins) at their own centre
       if (callerProfile.permission === 'centre_leader') {
@@ -60,22 +108,28 @@ Deno.serve(async (req) => {
 
       // Create the auth user AND send invite email in one step
       const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-        data: { first_name, last_name },
-        redirectTo: 'https://future-focus-intranet-8qax.vercel.app',
+        data: {
+          first_name,
+          last_name,
+          centre,
+          inviter_name: inviterName || null,
+          invite_message: invite_message?.trim() || null,
+        },
+        redirectTo,
       })
 
       if (createError) {
-        return new Response(JSON.stringify({ error: createError.message }), { status: 400, headers: corsHeaders })
+        return new Response(JSON.stringify({ error: toErrorMessage(createError, 'Could not send invite email') }), { status: 400, headers: corsHeaders })
       }
 
       // Insert their profile
       const { error: profileError } = await supabaseAdmin
         .from('profiles')
-        .insert({ id: newUser.user.id, first_name, last_name, mobile, centre, role_title, permission, date_of_birth: date_of_birth || null, start_date: start_date || null })
+        .insert({ id: newUser.user.id, first_name, last_name, mobile, centre, role_title, permission, date_of_birth: dob, start_date: start })
 
       if (profileError) {
         await supabaseAdmin.auth.admin.deleteUser(newUser.user.id)
-        return new Response(JSON.stringify({ error: profileError.message }), { status: 400, headers: corsHeaders })
+        return new Response(JSON.stringify({ error: toErrorMessage(profileError, 'Could not create staff profile') }), { status: 400, headers: corsHeaders })
       }
 
       return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders })
@@ -84,12 +138,24 @@ Deno.serve(async (req) => {
     if (req.method === 'DELETE') {
       const { userId } = await req.json()
 
+      if (!userId) {
+        return new Response(JSON.stringify({ error: 'User ID is required' }), { status: 400, headers: corsHeaders })
+      }
+
+      if (userId === user.id) {
+        return new Response(JSON.stringify({ error: 'You cannot remove your own account' }), { status: 400, headers: corsHeaders })
+      }
+
       // Look up the target profile
-      const { data: targetProfile } = await supabaseAdmin
+      const { data: targetProfile, error: targetProfileError } = await supabaseAdmin
         .from('profiles')
         .select('permission, centre')
         .eq('id', userId)
         .single()
+
+      if (targetProfileError || !targetProfile) {
+        return new Response(JSON.stringify({ error: 'Staff member not found' }), { status: 404, headers: corsHeaders })
+      }
 
       // Centre leaders can only remove staff at their own centre
       if (callerProfile.permission === 'centre_leader') {
@@ -98,14 +164,21 @@ Deno.serve(async (req) => {
         }
       }
 
-      await supabaseAdmin.from('profiles').delete().eq('id', userId)
-      await supabaseAdmin.auth.admin.deleteUser(userId)
+      const { error: profileDeleteError } = await supabaseAdmin.from('profiles').delete().eq('id', userId)
+      if (profileDeleteError) {
+        return new Response(JSON.stringify({ error: toErrorMessage(profileDeleteError, 'Could not remove staff profile') }), { status: 400, headers: corsHeaders })
+      }
+
+      const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(userId)
+      if (authDeleteError && !String(authDeleteError.message || '').toLowerCase().includes('not found')) {
+        return new Response(JSON.stringify({ error: toErrorMessage(authDeleteError, 'Could not remove auth account') }), { status: 400, headers: corsHeaders })
+      }
 
       return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders })
     }
 
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders })
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders })
+    return new Response(JSON.stringify({ error: toErrorMessage(err) }), { status: 500, headers: corsHeaders })
   }
 })
