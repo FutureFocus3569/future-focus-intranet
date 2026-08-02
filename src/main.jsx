@@ -17,6 +17,7 @@ import { PoliciesAdminPage } from './pages/PoliciesAdmin.jsx';
 import { PoliciesForReviewPage } from './pages/PoliciesForReview.jsx';
 import { OurPeoplePage } from './pages/OurPeoplePage.jsx';
 import { KnowledgeCentrePage } from './pages/KnowledgeCentre.jsx';
+import { CentresPage } from './pages/CentresPage.jsx';
 import { isDocumentVisibleForCentre, isPolicyOpenForFeedback } from './lib/policyReview.js';
 import WellbeingCheckin from './components/WellbeingCheckin.jsx';
 import './styles.css';
@@ -84,18 +85,22 @@ function Logo() {
 }
 
 function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
+  const canViewCentres = profile?.permission === 'super_admin' || profile?.permission === 'centre_leader'
   return <>
     {open && <div className="sidebar-backdrop" onClick={onClose} />}
     <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
       <button className="sidebar-close" onClick={onClose} aria-label="Close menu"><X size={20}/></button>
       <Logo />
       <nav className="main-nav">
-        {navItems.map(([Icon, label]) => (
+        {navItems.map(([Icon, label]) => {
+          if (label === 'Centres' && !canViewCentres) return null
+          return (
           <button key={label} className={`nav-item ${page === label ? 'active' : ''}`}
             onClick={() => { setPage(label); onClose(); }}>
             <Icon size={19} strokeWidth={1.9} /> <span>{label}</span>
           </button>
-        ))}
+          )
+        })}
         {canManageStaff && (
           <button className={`nav-item ${page === 'Staff' ? 'active' : ''}`}
             onClick={() => { setPage('Staff'); onClose(); }}>
@@ -521,6 +526,7 @@ function App(){
   if (!session) return <LoginPage />;
 
   const canManageStaff = profile?.permission === 'super_admin' || profile?.permission === 'centre_leader';
+  const canViewCentres = profile?.permission === 'super_admin' || profile?.permission === 'centre_leader';
 
   return <div className="app-shell">
     <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)}
@@ -531,6 +537,8 @@ function App(){
       <div className="page-content">
         {page === 'Staff' && canManageStaff ? (
           <StaffManagementPage currentProfile={profile} />
+        ) : page === 'Centres' && canViewCentres ? (
+          <CentresPage currentProfile={profile} />
         ) : page === 'Calendar' ? (
           <EventsPage currentProfile={profile} />
         ) : page === 'Our People' ? (
