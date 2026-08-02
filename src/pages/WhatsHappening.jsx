@@ -418,17 +418,30 @@ export function WhatsHappeningPage({ currentProfile }) {
             </span>
             <span className="post-centre-badge" style={{ background: centreColor.bg, color: centreColor.text }}>{centreName}</span>
           </div>
-          {post.tags && post.tags.length > 0 && (
-            <div className="post-tags-indicator" title={`${post.tags.length} tag${post.tags.length > 1 ? 's' : ''}`}>
-              <div className="post-tags-dot"></div>
-              <div className="post-tags-tooltip">
-                {post.tags.map(t => {
-                  const tag = getTag(t)
-                  return tag ? <span key={t} className="post-tag-badge" style={{ background: tag.bg, color: tag.colour }}>{tag.label}</span> : null
-                })}
+          <div className="post-meta-indicators">
+            {post.tags && post.tags.length > 0 && (
+              <div className="post-tags-indicator" title={`${post.tags.length} tag${post.tags.length > 1 ? 's' : ''}`}>
+                <div className="post-tags-dot"></div>
+                <div className="post-tags-tooltip">
+                  {post.tags.map(t => {
+                    const tag = getTag(t)
+                    return tag ? <span key={t} className="post-tag-badge" style={{ background: tag.bg, color: tag.colour }}>{tag.label}</span> : null
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+            {attachments.length > 0 && (
+              <div className="post-attachment-indicator" title={`${attachments.length} attachment${attachments.length > 1 ? 's' : ''}`}>
+                <div className="post-attachment-dot"></div>
+                <div className="post-attachment-tooltip">
+                  <strong>Attachments</strong>
+                  {attachments.map((attachment, index) => (
+                    <span key={`${post.id}-attachment-name-${index}`}>{attachment.name}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <div className="post-card-actions">
             {canEdit(post) && (
               <button className="btn-icon-edit" onClick={() => setEditing(post)} title="Edit post"><Edit2 size={14}/></button>
@@ -452,16 +465,6 @@ export function WhatsHappeningPage({ currentProfile }) {
           ) : (
             <div className="post-image-placeholder" style={{ background: centreColor.bg }}>
               <span className="post-image-placeholder-text">{centreName}</span>
-            </div>
-          )}
-
-          {attachments.length > 0 && (
-            <div className="post-attachment-list">
-              {attachments.map((attachment, index) => (
-                <a key={`${post.id}-attachment-${index}`} className="post-attachment-link" href={attachment.url} target="_blank" rel="noopener noreferrer">
-                  <FileText size={15}/> {attachment.name || `Download attachment ${index + 1}`}
-                </a>
-              ))}
             </div>
           )}
         </div>
