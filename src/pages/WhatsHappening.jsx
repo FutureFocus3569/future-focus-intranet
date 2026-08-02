@@ -284,6 +284,50 @@ function PostModal({ onClose, onSaved, callerProfile, editing }) {
   )
 }
 
+function PostReadModal({ post, onClose }) {
+  if (!post) return null
+  const centreName = post.centre || 'All Centres'
+  const attachments = getAttachmentsFromPost(post)
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{post.title}</h2>
+          <button className="modal-close" onClick={onClose}><X size={20}/></button>
+        </div>
+        <div className="post-read-content">
+          <div className="post-read-meta">{centreName} • {timeAgo(post.created_at)}</div>
+          <p className="post-read-body">{post.body}</p>
+          {post.images && post.images.length > 0 && (
+            <div className={`post-read-images post-images-${post.images.length}`}>
+              {post.images.map((url, index) => (
+                <img key={`${post.id}-read-image-${index}`} src={url} alt={`Image ${index + 1}`} />
+              ))}
+            </div>
+          )}
+          {attachments.length > 0 && (
+            <div className="post-read-attachments">
+              <h4>Attachments</h4>
+              {attachments.map((attachment, index) => (
+                <a
+                  key={`${post.id}-read-attachment-${index}`}
+                  className="post-attachment-link"
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <FileText size={15}/> {attachment.name || `Download attachment ${index + 1}`}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function timeAgo(dateStr) {
   const diff = (Date.now() - new Date(dateStr)) / 1000
   if (diff < 60) return 'Just now'
@@ -300,6 +344,7 @@ export function WhatsHappeningPage({ currentProfile }) {
   const [tagFilter, setTagFilter] = useState('all')
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [readingPost, setReadingPost] = useState(null)
   const [deleting, setDeleting] = useState(null)
   const [expandedYears, setExpandedYears] = useState({})
   const [userLikes, setUserLikes] = useState(new Set())
@@ -403,6 +448,10 @@ export function WhatsHappeningPage({ currentProfile }) {
     setExpandedYears(prev => ({ ...prev, [yr]: !prev[yr] }))
   }
 
+  function openPost(post) {
+    setReadingPost(post)
+  }
+
   function renderPostCard(post) {
     const cat = getCat(post.category)
     const CatIcon = cat.Icon
@@ -444,22 +493,22 @@ export function WhatsHappeningPage({ currentProfile }) {
           </div>
           <div className="post-card-actions">
             {canEdit(post) && (
-              <button className="btn-icon-edit" onClick={() => setEditing(post)} title="Edit post"><Edit2 size={14}/></button>
+              <button className="btn-icon-edit" onClick={(e) => { e.stopPropagation(); setEditing(post) }} title="Edit post"><Edit2 size={14}/></button>
             )}
             {canDelete(post) && (
-              <button className="btn-icon-danger" onClick={() => handleDelete(post.id)} disabled={deleting === post.id} title="Delete post"><Trash2 size={14}/></button>
+              <button className="btn-icon-danger" onClick={(e) => { e.stopPropagation(); handleDelete(post.id) }} disabled={deleting === post.id} title="Delete post"><Trash2 size={14}/></button>
             )}
           </div>
         </div>
-        <div className="post-card-content">
+        <div className="post-card-content post-card-content-clickable" onClick={() => openPost(post)}>
           <h2 className="post-title" title={post.title}>{post.title}</h2>
           <p className="post-body">{post.body}</p>
           {post.images && post.images.length > 0 ? (
             <div className={`post-images post-images-${post.images.length}`}>
               {post.images.map((url, i) => (
-                <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                <div key={i}>
                   <img src={url} alt={`Image ${i + 1}`} />
-                </a>
+                </div>
               ))}
             </div>
           ) : (
@@ -475,7 +524,7 @@ export function WhatsHappeningPage({ currentProfile }) {
               <span>{post.author.first_name} {post.author.last_name}</span>
               <span className="post-time">{timeAgo(post.created_at)}</span>
             </div>
-            <button className={`post-like-btn ${userLikes.has(post.id) ? 'liked' : ''}`} onClick={() => handleLike(post.id)} disabled={liking === post.id} title="Like this post">
+            <button className={`post-like-btn ${userLikes.has(post.id) ? 'liked' : ''}`} onClick={(e) => { e.stopPropagation(); handleLike(post.id) }} disabled={liking === post.id} title="Like this post">
               <ThumbsUp size={14}/> {post.likes || 0}
             </button>
           </div>
@@ -613,6 +662,13 @@ export function WhatsHappeningPage({ currentProfile }) {
           onSaved={loadPosts}
           callerProfile={currentProfile}
           editing={editing}
+        />
+      )}
+
+      {readingPost && (
+        <PostReadModal
+          post={readingPost}
+          onClose={() => setReadingPost(null)}
         />
       )}
     </div>
