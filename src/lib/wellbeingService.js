@@ -9,6 +9,8 @@ import { supabase } from './supabase.js'
  * Get today's check-in for current user (if exists)
  */
 export async function getTodayCheckIn(userId) {
+  if (!userId) return null
+
   const today = new Date().toISOString().slice(0, 10)
   
   const { data, error } = await supabase

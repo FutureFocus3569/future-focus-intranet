@@ -27,12 +27,18 @@ export default function WellbeingCheckin({ userId, centreName }) {
 
   // Load today's check-in on mount
   useEffect(() => {
+    if (!userId) {
+      setLoading(false)
+      setError('')
+      return
+    }
     loadCheckIn()
   }, [userId])
 
   async function loadCheckIn() {
     try {
       setLoading(true)
+      setError('')
       const checkIn = await getTodayCheckIn(userId)
       if (checkIn) {
         setTodayCheckIn(checkIn)
@@ -41,7 +47,8 @@ export default function WellbeingCheckin({ userId, centreName }) {
       }
     } catch (err) {
       console.error('Error loading check-in:', err)
-      setError('Failed to load your check-in')
+      // Keep the form usable even if loading previous state fails.
+      setError('')
     }
     setLoading(false)
   }
