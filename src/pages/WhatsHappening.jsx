@@ -32,7 +32,29 @@ function getTag(value) { return TAGS.find(t => t.value === value) }
 function getCat(value) { return CATEGORIES.find(c => c.value === value) || CATEGORIES[2] }
 function getCentreColor(centre) { return CENTRE_COLORS[centre] || { text: '#fff', bg: '#6b7e8a' } }
 
+function parseStoredArray(value) {
+  if (!value) return []
+  if (Array.isArray(value)) return value.filter(Boolean)
+  if (typeof value !== 'string') return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [value]
+  } catch {
+    return [value]
+  }
+}
+
+function getAttachmentsFromPost(post) {
+  const urls = parseStoredArray(post?.attachment_url)
+  const names = parseStoredArray(post?.attachment_name)
+  return urls.map((url, index) => ({
+    url,
+    name: names[index] || names[0] || `Attachment ${index + 1}`,
+  }))
+}
+
 function PostModal({ onClose, onSaved, callerProfile, editing }) {
+  const MAX_ATTACHMENTS = 5
   const isAdmin = callerProfile?.permission === 'super_admin'
   const isCentreLeader = callerProfile?.permission === 'centre_leader'
   const canChooseCentre = isAdmin || isCentreLeader
@@ -42,8 +64,7 @@ function PostModal({ onClose, onSaved, callerProfile, editing }) {
     category: editing?.category ?? 'news',
     centre: editing?.centre ?? (isAdmin ? '' : callerProfile?.centre ?? ''),    tags: editing?.tags ?? [],
     images: editing?.images ?? [],
-    attachment_url: editing?.attachment_url ?? null,
-    attachment_name: editing?.attachment_name ?? null,
+    attachments: getAttachmentsFromPost(editing),
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -88,18 +109,28 @@ function PostModal({ onClose, onSaved, callerProfile, editing }) {
   }
 
   async function handleDocUpload(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    const remaining = MAX_ATTACHMENTS - form.attachments.length
+    const toUpload = files.slice(0, remaining)
+    if (!toUpload.length) {
+      e.target.value = ''
+      return
+    }
     setUploadingDoc(true)
     setError('')
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const ext = file.name.split('.').pop()
-      const filename = `docs/${session.user.id}-${Date.now()}.${ext}`
-      const { error: uploadError } = await supabase.storage.from('post-media').upload(filename, file, { upsert: true })
-      if (uploadError) throw uploadError
-      const { data } = supabase.storage.from('post-media').getPublicUrl(filename)
-      setForm(f => ({ ...f, attachment_url: data.publicUrl, attachment_name: file.name }))
+      const uploaded = []
+      for (const file of toUpload) {
+        const ext = file.name.split('.').pop()
+        const filename = `docs/${session.user.id}-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+        const { error: uploadError } = await supabase.storage.from('post-media').upload(filename, file, { upsert: true })
+        if (uploadError) throw uploadError
+        const { data } = supabase.storage.from('post-media').getPublicUrl(filename)
+        uploaded.push({ url: data.publicUrl, name: file.name })
+      }
+      setForm(f => ({ ...f, attachments: [...f.attachments, ...uploaded] }))
     } catch (err) {
       setError('File upload failed: ' + err.message)
     }
@@ -111,10 +142,27 @@ function PostModal({ onClose, onSaved, callerProfile, editing }) {
     setForm(f => ({ ...f, images: f.images.filter(i => i !== url) }))
   }
 
+  function removeAttachment(indexToRemove) {
+    setForm(f => ({ ...f, attachments: f.attachments.filter((_, index) => index !== indexToRemove) }))
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setLoading(true); setError('')
     try {
+      const attachmentUrls = form.attachments.map(a => a.url).filter(Boolean)
+      const attachmentNames = form.attachments.map(a => a.name).filter(Boolean)
+      const serializedAttachmentUrls = attachmentUrls.length === 0
+        ? null
+        : attachmentUrls.length === 1
+          ? attachmentUrls[0]
+          : JSON.stringify(attachmentUrls)
+      const serializedAttachmentNames = attachmentNames.length === 0
+        ? null
+        : attachmentNames.length === 1
+          ? attachmentNames[0]
+          : JSON.stringify(attachmentNames)
+
       const payload = {
         title: form.title,
         body: form.body,
@@ -122,8 +170,8 @@ function PostModal({ onClose, onSaved, callerProfile, editing }) {
         centre: form.centre || null,
         tags: form.tags || [],
         images: form.images || [],
-        attachment_url: form.attachment_url || null,
-        attachment_name: form.attachment_name || null,
+        attachment_url: serializedAttachmentUrls,
+        attachment_name: serializedAttachmentNames,
       }
       if (editing) {
         const { error } = await supabase.from('posts').update(payload).eq('id', editing.id)
@@ -205,17 +253,22 @@ function PostModal({ onClose, onSaved, callerProfile, editing }) {
 
           {/* Document upload */}
           <div className="post-upload-section">
-            <div className="post-upload-label"><Paperclip size={15}/> Attachment <span style={{color:'#8fa3ad',fontSize:12}}>(PDF or Word)</span></div>
-            <input ref={docInputRef} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style={{display:'none'}} onChange={handleDocUpload} />
-            {form.attachment_url ? (
-              <div className="post-attachment-preview">
-                <FileText size={16} style={{color:'#1a6eb5'}}/>
-                <span>{form.attachment_name}</span>
-                <button type="button" className="btn-icon-danger" style={{padding:'2px 4px'}} onClick={() => setForm(f => ({...f, attachment_url: null, attachment_name: null}))}><X size={12}/></button>
+            <div className="post-upload-label"><Paperclip size={15}/> Attachments <span style={{color:'#8fa3ad',fontSize:12}}>(PDF or Word, up to {MAX_ATTACHMENTS})</span></div>
+            <input ref={docInputRef} type="file" multiple accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style={{display:'none'}} onChange={handleDocUpload} />
+            {form.attachments.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {form.attachments.map((attachment, index) => (
+                  <div key={`${attachment.url}-${index}`} className="post-attachment-preview">
+                    <FileText size={16} style={{color:'#1a6eb5'}}/>
+                    <span>{attachment.name}</span>
+                    <button type="button" className="btn-icon-danger" style={{padding:'2px 4px'}} onClick={() => removeAttachment(index)}><X size={12}/></button>
+                  </div>
+                ))}
               </div>
-            ) : (
+            )}
+            {form.attachments.length < MAX_ATTACHMENTS && (
               <button type="button" className="btn-secondary" onClick={() => docInputRef.current?.click()} disabled={uploadingDoc}>
-                {uploadingDoc ? 'Uploading…' : 'Upload File'}
+                {uploadingDoc ? 'Uploading…' : 'Upload Files'}
               </button>
             )}
           </div>
@@ -355,6 +408,7 @@ export function WhatsHappeningPage({ currentProfile }) {
     const CatIcon = cat.Icon
     const centreName = post.centre || 'All Centres'
     const centreColor = getCentreColor(centreName)
+    const attachments = getAttachmentsFromPost(post)
     return (
       <article className="post-card" key={post.id} id={`post-${post.id}`}>
         <div className="post-card-header">
@@ -401,10 +455,14 @@ export function WhatsHappeningPage({ currentProfile }) {
             </div>
           )}
 
-          {post.attachment_url && (
-            <a className="post-attachment-link" href={post.attachment_url} target="_blank" rel="noopener noreferrer">
-              <FileText size={15}/> {post.attachment_name || 'Download attachment'}
-            </a>
+          {attachments.length > 0 && (
+            <div className="post-attachment-list">
+              {attachments.map((attachment, index) => (
+                <a key={`${post.id}-attachment-${index}`} className="post-attachment-link" href={attachment.url} target="_blank" rel="noopener noreferrer">
+                  <FileText size={15}/> {attachment.name || `Download attachment ${index + 1}`}
+                </a>
+              ))}
+            </div>
           )}
         </div>
         {post.author && (
