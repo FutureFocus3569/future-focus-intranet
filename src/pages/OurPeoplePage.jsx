@@ -115,8 +115,35 @@ export function OurPeoplePage({ currentProfile }) {
 
   async function loadStaff() {
     setLoading(true)
-    const { data } = await supabase.from('profiles').select('*').order('centre').order('permission').order('first_name')
-    setStaff(data || [])
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+
+      if (!token) {
+        setStaff([])
+        setLoading(false)
+        return
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-staff`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+      })
+
+      if (!response.ok) {
+        setStaff([])
+        setLoading(false)
+        return
+      }
+
+      const payload = await response.json().catch(() => ({}))
+      setStaff(Array.isArray(payload?.staff) ? payload.staff : [])
+    } catch {
+      setStaff([])
+    }
     setLoading(false)
   }
 
@@ -140,7 +167,8 @@ export function OurPeoplePage({ currentProfile }) {
   }
 
   const canAddStaff = isAdmin || isCentreLeader
-  const centreList = CENTRES
+  const dynamicCentres = [...new Set(staff.map(p => p?.centre).filter(Boolean))]
+  const centreList = [...new Set([...CENTRES, ...dynamicCentres])]
 
   // Group staff by centre
   const groupedBycentre = {}
