@@ -415,6 +415,8 @@ function App(){
     const hash = window.location.hash;
     if (hash.includes('access_token') || hash.includes('type=recovery')) {
       setIsPasswordReset(true);
+      // Avoid infinite loading state when arriving from invite/reset links.
+      setSession(null);
       return;
     }
 
@@ -514,13 +516,13 @@ function App(){
     setPage('Home');
   }
 
+  // Password reset flow
+  if (isPasswordReset) return <PasswordResetPage />;
+
   // Still checking auth
   if (session === undefined) {
     return <div className="auth-loading"><div className="ff-mark">FF</div><p>Loading…</p></div>;
   }
-
-  // Password reset flow
-  if (isPasswordReset) return <PasswordResetPage />;
 
   // Not signed in
   if (!session) return <LoginPage />;
