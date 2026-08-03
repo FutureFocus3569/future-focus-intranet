@@ -14,7 +14,13 @@ function getApiErrorMessage(payload, fallback) {
   }
   if (typeof payload.error === 'string') return payload.error
   if (payload.error && typeof payload.error.message === 'string') return payload.error.message
+  if (payload.error && typeof payload.error.error_description === 'string') return payload.error.error_description
+  if (payload.error && typeof payload.error.details === 'string') return payload.error.details
   if (typeof payload.message === 'string') return payload.message
+  try {
+    const serialized = JSON.stringify(payload)
+    if (serialized && serialized !== '{}' && serialized !== '[]') return serialized
+  } catch {}
   return fallback
 }
 
@@ -52,8 +58,10 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
           body: JSON.stringify(form),
         }
       )
-      const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(getApiErrorMessage(data, 'Could not add staff member.'))
+      const raw = await res.text().catch(() => '')
+      let data = null
+      try { data = raw ? JSON.parse(raw) : null } catch { data = raw }
+      if (!res.ok) throw new Error(getApiErrorMessage(data, `Could not add staff member (HTTP ${res.status}).`))
       onSuccess()
       onClose()
     } catch (err) {
@@ -181,9 +189,11 @@ export function StaffManagementPage({ currentProfile }) {
           body: JSON.stringify({ userId: removing.id }),
         }
       )
-      const data = await res.json().catch(() => ({}))
+      const raw = await res.text().catch(() => '')
+      let data = null
+      try { data = raw ? JSON.parse(raw) : null } catch { data = raw }
 
-      if (!res.ok) throw new Error(getApiErrorMessage(data, 'Could not remove staff member.'))
+      if (!res.ok) throw new Error(getApiErrorMessage(data, `Could not remove staff member (HTTP ${res.status}).`))
 
       setRemoving(null)
       await loadStaff()

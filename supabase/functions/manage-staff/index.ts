@@ -12,7 +12,13 @@ function toErrorMessage(err: unknown, fallback = 'Unexpected server error') {
   if (err instanceof Error && err.message) return err.message
   if (typeof err === 'object') {
     const maybeMessage = (err as { message?: unknown }).message
+    const maybeDescription = (err as { error_description?: unknown }).error_description
+    const maybeDetails = (err as { details?: unknown }).details
+    const maybeHint = (err as { hint?: unknown }).hint
     if (typeof maybeMessage === 'string' && maybeMessage.trim()) return maybeMessage
+    if (typeof maybeDescription === 'string' && maybeDescription.trim()) return maybeDescription
+    if (typeof maybeDetails === 'string' && maybeDetails.trim()) return maybeDetails
+    if (typeof maybeHint === 'string' && maybeHint.trim()) return maybeHint
     try {
       const serialized = JSON.stringify(err)
       if (serialized && serialized !== '{}' && serialized !== '[]') return serialized
@@ -54,10 +60,21 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
     }
 
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+
+    if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
+      return new Response(
+        JSON.stringify({ error: 'Edge function is missing required Supabase environment variables.' }),
+        { status: 500, headers: corsHeaders }
+      )
+    }
+
     // Client to verify the caller's identity
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      supabaseUrl,
+      supabaseAnonKey,
       { global: { headers: { Authorization: authHeader } } }
     )
 
@@ -79,8 +96,8 @@ Deno.serve(async (req) => {
 
     // Admin client for privileged operations
     const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      supabaseUrl,
+      serviceRoleKey
     )
 
     if (req.method === 'POST') {
@@ -122,10 +139,23 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: toErrorMessage(createError, 'Could not send invite email') }), { status: 400, headers: corsHeaders })
       }
 
-      // Insert their profile
-      const { error: profileError } = await supabaseAdmin
+      const baseProfile = { id: newUser.user.id, first_name, last_name, mobile, centre, role_title, permission }
+      const profileWithOptionalDates = { ...baseProfile, date_of_birth: dob, start_date: start }
+
+      // Insert profile with optional date fields; if the project schema does not yet have
+      // those columns, gracefully retry with base fields so invites still work.
+      let { error: profileError } = await supabaseAdmin
         .from('profiles')
-        .insert({ id: newUser.user.id, first_name, last_name, mobile, centre, role_title, permission, date_of_birth: dob, start_date: start })
+        .insert(profileWithOptionalDates)
+
+      if (profileError) {
+        const message = toErrorMessage(profileError).toLowerCase()
+        const missingDateColumns = message.includes('date_of_birth') || message.includes('start_date')
+        if (missingDateColumns) {
+          const retry = await supabaseAdmin.from('profiles').insert(baseProfile)
+          profileError = retry.error
+        }
+      }
 
       if (profileError) {
         await supabaseAdmin.auth.admin.deleteUser(newUser.user.id)
