@@ -151,7 +151,19 @@ Deno.serve(async (req) => {
       }
 
       if (createError) {
-        return new Response(JSON.stringify({ error: toErrorMessage(createError, 'Could not send invite email') }), { status: 400, headers: corsHeaders })
+        const rawMessage = toErrorMessage(createError, 'Could not send invite email')
+        const lower = rawMessage.toLowerCase()
+
+        if (lower.includes('error sending confirmation email') || lower.includes('smtp') || lower.includes('rate limit')) {
+          return new Response(
+            JSON.stringify({
+              error: `Invite email could not be sent. Please check Supabase Auth email settings (SMTP/provider, sender, and rate limits). Details: ${rawMessage}`,
+            }),
+            { status: 400, headers: corsHeaders }
+          )
+        }
+
+        return new Response(JSON.stringify({ error: rawMessage }), { status: 400, headers: corsHeaders })
       }
 
       const baseProfile = { id: newUser.user.id, first_name, last_name, mobile, centre, role_title, permission }
