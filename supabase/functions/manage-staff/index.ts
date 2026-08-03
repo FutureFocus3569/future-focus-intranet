@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -229,6 +229,61 @@ Deno.serve(async (req) => {
       const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(userId)
       if (authDeleteError && !String(authDeleteError.message || '').toLowerCase().includes('not found')) {
         return new Response(JSON.stringify({ error: toErrorMessage(authDeleteError, 'Could not remove auth account') }), { status: 400, headers: corsHeaders })
+      }
+
+      return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders })
+    }
+
+    if (req.method === 'PATCH') {
+      const { userId, centre, role_title, permission, mobile, start_date } = await req.json()
+
+      if (!userId) {
+        return new Response(JSON.stringify({ error: 'User ID is required' }), { status: 400, headers: corsHeaders })
+      }
+
+      const start = normalizeDateInput(start_date)
+
+      const { data: targetProfile, error: targetProfileError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, permission, centre')
+        .eq('id', userId)
+        .single()
+
+      if (targetProfileError || !targetProfile) {
+        return new Response(JSON.stringify({ error: 'Staff member not found' }), { status: 404, headers: corsHeaders })
+      }
+
+      // Centre leaders can only update staff in their own centre and cannot elevate permissions.
+      if (callerProfile.permission === 'centre_leader') {
+        if (targetProfile.centre !== callerProfile.centre || targetProfile.permission !== 'staff') {
+          return new Response(JSON.stringify({ error: 'You can only update staff at your own centre' }), { status: 403, headers: corsHeaders })
+        }
+        if (permission && permission !== 'staff') {
+          return new Response(JSON.stringify({ error: 'Centre leaders cannot change permission levels' }), { status: 403, headers: corsHeaders })
+        }
+      }
+
+      const updates: Record<string, unknown> = {}
+      if (typeof role_title === 'string') updates.role_title = role_title
+      if (typeof mobile === 'string') updates.mobile = mobile
+      if (start_date !== undefined) updates.start_date = start
+
+      if (callerProfile.permission === 'super_admin') {
+        if (typeof permission === 'string') updates.permission = permission
+        if (typeof centre === 'string') updates.centre = centre
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return new Response(JSON.stringify({ error: 'No valid fields to update' }), { status: 400, headers: corsHeaders })
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from('profiles')
+        .update(updates)
+        .eq('id', userId)
+
+      if (updateError) {
+        return new Response(JSON.stringify({ error: toErrorMessage(updateError, 'Could not update staff profile') }), { status: 400, headers: corsHeaders })
       }
 
       return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders })

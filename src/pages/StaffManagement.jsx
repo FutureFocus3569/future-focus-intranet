@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase, CENTRES, PERMISSIONS } from '../lib/supabase.js'
-import { Users, Plus, Trash2, ChevronDown, X, Search } from 'lucide-react'
+import { Users, Plus, Trash2, X, Search, Edit2 } from 'lucide-react'
 
 const PERMISSION_LABELS = { super_admin: 'Super Admin', centre_leader: 'Centre Leader', staff: 'Staff' }
 const PERMISSION_COLOURS = { super_admin: '#005866', centre_leader: '#7c3aed', staff: '#374151' }
@@ -129,6 +129,109 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
   )
 }
 
+function EditStaffModal({ staff, onClose, onSuccess, callerProfile }) {
+  const isAdmin = callerProfile?.permission === 'super_admin'
+  const [form, setForm] = useState({
+    centre: staff?.centre || '',
+    role_title: staff?.role_title || '',
+    permission: staff?.permission || 'staff',
+    mobile: staff?.mobile || '',
+    start_date: staff?.start_date || '',
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-staff`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            userId: staff.id,
+            centre: form.centre,
+            role_title: form.role_title,
+            permission: form.permission,
+            mobile: form.mobile,
+            start_date: form.start_date,
+          }),
+        }
+      )
+      const raw = await res.text().catch(() => '')
+      let data = null
+      try { data = raw ? JSON.parse(raw) : null } catch { data = raw }
+      if (!res.ok) throw new Error(getApiErrorMessage(data, `Could not update staff member (HTTP ${res.status}).`))
+      onSuccess()
+      onClose()
+    } catch (err) {
+      setError(err.message || 'Could not update staff member.')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Edit Staff Member</h2>
+          <button className="modal-close" onClick={onClose}><X size={20} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="staff-form">
+          <label>Name
+            <input value={`${staff.first_name} ${staff.last_name}`} disabled />
+          </label>
+          <div className="form-row">
+            <label>Centre / Location
+              <select value={form.centre} onChange={e => set('centre', e.target.value)} disabled={!isAdmin}>
+                <option value="">Select centre…</option>
+                {CENTRES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+            <label>Role Title
+              <input value={form.role_title} onChange={e => set('role_title', e.target.value)} placeholder="e.g. Lead Teacher" />
+            </label>
+          </div>
+          <div className="form-row">
+            <label>Mobile
+              <input type="tel" value={form.mobile} onChange={e => set('mobile', e.target.value)} placeholder="+64 21 123 4567" />
+            </label>
+            <label>Start Date
+              <input type="date" value={form.start_date || ''} onChange={e => set('start_date', e.target.value)} />
+            </label>
+          </div>
+          <label>Permission Level
+            <select value={form.permission} onChange={e => set('permission', e.target.value)} disabled={!isAdmin}>
+              {PERMISSIONS
+                .filter(p => isAdmin || p.value === 'staff')
+                .map(p => (
+                  <option key={p.value} value={p.value}>{p.label} — {p.description}</option>
+                ))}
+            </select>
+          </label>
+          {error && <div className="form-error">{error}</div>}
+          <div className="form-actions">
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Saving…' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function RemoveConfirm({ staff, onClose, onConfirm, loading }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -153,12 +256,20 @@ export function StaffManagementPage({ currentProfile }) {
   const [search, setSearch] = useState('')
   const [centreFilter, setCentreFilter] = useState('all')
   const [showAdd, setShowAdd] = useState(false)
+  const [editing, setEditing] = useState(null)
   const [removing, setRemoving] = useState(null)
   const [removeLoading, setRemoveLoading] = useState(false)
   const [removeError, setRemoveError] = useState('')
 
   const isAdmin = currentProfile?.permission === 'super_admin'
   const isCentreLeader = currentProfile?.permission === 'centre_leader'
+
+  function canEditStaff(person) {
+    if (person.id === currentProfile?.id) return false
+    if (isAdmin) return true
+    if (isCentreLeader) return person.centre === currentProfile.centre && person.permission === 'staff'
+    return false
+  }
 
   useEffect(() => { loadStaff() }, [])
 
@@ -267,6 +378,11 @@ export function StaffManagementPage({ currentProfile }) {
                 {PERMISSION_LABELS[s.permission] || s.permission}
               </span>
               <div className="staff-actions">
+                {canEditStaff(s) && (
+                  <button className="btn-icon-primary" onClick={() => setEditing(s)} title="Edit staff member">
+                    <Edit2 size={15} />
+                  </button>
+                )}
                 {s.id !== currentProfile?.id && (
                   <button className="btn-icon-danger" onClick={() => setRemoving(s)} title="Remove staff member">
                     <Trash2 size={15} />
@@ -279,6 +395,7 @@ export function StaffManagementPage({ currentProfile }) {
       )}
 
       {showAdd && <AddStaffModal onClose={() => setShowAdd(false)} onSuccess={loadStaff} callerProfile={currentProfile} />}
+  {editing && <EditStaffModal staff={editing} onClose={() => setEditing(null)} onSuccess={loadStaff} callerProfile={currentProfile} />}
       {removing && (
         <div className="modal-overlay" onClick={() => setRemoving(null)}>
           <div className="modal-card modal-sm" onClick={e => e.stopPropagation()}>

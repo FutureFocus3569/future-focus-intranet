@@ -140,7 +140,7 @@ export function OurPeoplePage({ currentProfile }) {
   }
 
   const canAddStaff = isAdmin || isCentreLeader
-  const centreList = isAdmin ? CENTRES : [currentProfile?.centre]
+  const centreList = CENTRES
 
   // Group staff by centre
   const groupedBycentre = {}
@@ -234,7 +234,7 @@ export function OurPeoplePage({ currentProfile }) {
             </div>
           ))}
 
-          {isAdmin && relievers.length > 0 && (
+          {relievers.length > 0 && (
             <div className="centre-section relievers-section">
               <h2 className="centre-title">🔄 Relievers</h2>
               <div className="people-grid">
