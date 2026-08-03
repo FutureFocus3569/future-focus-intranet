@@ -123,8 +123,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Create the auth user AND send invite email in one step
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      const invitePayload = {
         data: {
           first_name,
           last_name,
@@ -133,7 +132,23 @@ Deno.serve(async (req) => {
           invite_message: invite_message?.trim() || null,
         },
         redirectTo,
-      })
+      }
+
+      // Create the auth user AND send invite email in one step.
+      // If redirect URL is not allowed in project auth settings, retry with project default URL.
+      let { data: newUser, error: createError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, invitePayload)
+
+      if (createError) {
+        const inviteErrorText = toErrorMessage(createError).toLowerCase()
+        const likelyRedirectError = inviteErrorText.includes('redirect') || inviteErrorText.includes('not allowed')
+        if (likelyRedirectError) {
+          const retry = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+            data: invitePayload.data,
+          })
+          newUser = retry.data
+          createError = retry.error
+        }
+      }
 
       if (createError) {
         return new Response(JSON.stringify({ error: toErrorMessage(createError, 'Could not send invite email') }), { status: 400, headers: corsHeaders })
