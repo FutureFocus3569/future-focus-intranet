@@ -190,6 +190,24 @@ function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
 }
 
 function ProfileModal({ profile, onClose, onSaved }) {
+  function normalizeDateForInput(value) {
+    if (!value || typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+    const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy) {
+      const day = dmy[1].padStart(2, '0');
+      const month = dmy[2].padStart(2, '0');
+      return `${dmy[3]}-${month}-${day}`;
+    }
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().slice(0, 10);
+  }
+
   const [form, setForm] = useState({
     first_name: profile?.first_name ?? '',
     last_name: profile?.last_name ?? '',
@@ -197,8 +215,8 @@ function ProfileModal({ profile, onClose, onSaved }) {
     mobile: profile?.mobile ?? '',
     role_title: profile?.role_title ?? '',
     photo_url: profile?.photo_url ?? '',
-    date_of_birth: profile?.date_of_birth ?? '',
-    start_date: profile?.start_date ?? '',
+    date_of_birth: normalizeDateForInput(profile?.date_of_birth),
+    start_date: normalizeDateForInput(profile?.start_date),
     bio: profile?.bio ?? '',
   });
   const [loading, setLoading] = useState(false);
@@ -258,10 +276,16 @@ function ProfileModal({ profile, onClose, onSaved }) {
       
       // Update profile in database (exclude email - it's stored in auth only)
       const { email, ...profileData } = form;
-      const { error } = await supabase.from('profiles').update(profileData).eq('id', profile.id);
+      const payload = {
+        ...profileData,
+        date_of_birth: normalizeDateForInput(profileData.date_of_birth) || null,
+        start_date: normalizeDateForInput(profileData.start_date) || null,
+      };
+
+      const { error } = await supabase.from('profiles').update(payload).eq('id', profile.id);
       if (error) throw error;
       
-      setSaved(true); onSaved(form); setTimeout(onClose, 1200);
+      setSaved(true); onSaved({ ...form, ...payload }); setTimeout(onClose, 1200);
     } catch (err) {
       setError(err.message);
     }
