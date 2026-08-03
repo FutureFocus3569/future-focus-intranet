@@ -358,6 +358,19 @@ export function WhatsHappeningPage({ currentProfile }) {
     if (currentProfile?.id) loadUserLikes()
   }, [currentProfile?.id])
 
+  function getAuthorDisplay(author) {
+    if (!author) return 'Future Focus Team'
+    const fullName = `${author.first_name || ''} ${author.last_name || ''}`.trim()
+    return fullName || 'Future Focus Team'
+  }
+
+  function getInitials(name) {
+    const words = String(name || '').trim().split(/\s+/).filter(Boolean)
+    if (!words.length) return 'FF'
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
+    return `${words[0][0] || ''}${words[1][0] || ''}`.toUpperCase()
+  }
+
   async function loadPosts() {
     setLoading(true)
     const { data, error } = await supabase
@@ -366,12 +379,37 @@ export function WhatsHappeningPage({ currentProfile }) {
       .order('created_at', { ascending: false })
     if (error) console.error('loadPosts error:', error)
     const postsData = data || []
+
     if (postsData.length > 0) {
-      const authorIds = [...new Set(postsData.map(p => p.created_by).filter(Boolean))]
-      const { data: profiles } = await supabase.from('profiles').select('id,first_name,last_name').in('id', authorIds)
-      const profileMap = Object.fromEntries((profiles || []).map(p => [p.id, p]))
-      postsData.forEach(p => { p.author = profileMap[p.created_by] || null })
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+
+        if (token) {
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-staff`, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+          })
+
+          if (response.ok) {
+            const payload = await response.json().catch(() => ({}))
+            const profiles = Array.isArray(payload?.staff) ? payload.staff : []
+            const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]))
+            postsData.forEach(p => { p.author = profileMap[p.created_by] || null })
+          } else {
+            postsData.forEach(p => { p.author = null })
+          }
+        } else {
+          postsData.forEach(p => { p.author = null })
+        }
+      } catch {
+        postsData.forEach(p => { p.author = null })
+      }
     }
+
     setPosts(postsData)
     setLoading(false)
   }
@@ -389,12 +427,14 @@ export function WhatsHappeningPage({ currentProfile }) {
     try {
       if (userLikes.has(postId)) {
         // Unlike
-        await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', currentProfile.id)
+        const { error } = await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', currentProfile.id)
+        if (error) throw error
         setUserLikes(s => { const n = new Set(s); n.delete(postId); return n })
         setPosts(p => p.map(post => post.id === postId ? { ...post, likes: Math.max(0, (post.likes || 0) - 1) } : post))
       } else {
         // Like
-        await supabase.from('post_likes').insert({ post_id: postId, user_id: currentProfile.id })
+        const { error } = await supabase.from('post_likes').insert({ post_id: postId, user_id: currentProfile.id })
+        if (error) throw error
         setUserLikes(s => new Set([...s, postId]))
         setPosts(p => p.map(post => post.id === postId ? { ...post, likes: (post.likes || 0) + 1 } : post))
       }
@@ -458,6 +498,7 @@ export function WhatsHappeningPage({ currentProfile }) {
     const centreName = post.centre || 'All Centres'
     const centreColor = getCentreColor(centreName)
     const attachments = getAttachmentsFromPost(post)
+    const authorName = getAuthorDisplay(post.author)
     return (
       <article className="post-card" key={post.id} id={`post-${post.id}`}>
         <div className="post-card-header">
@@ -517,18 +558,16 @@ export function WhatsHappeningPage({ currentProfile }) {
             </div>
           )}
         </div>
-        {post.author && (
-          <div className="post-author">
-            <div className="post-avatar">{post.author.first_name?.[0]}{post.author.last_name?.[0]}</div>
-            <div className="post-author-info">
-              <span>{post.author.first_name} {post.author.last_name}</span>
-              <span className="post-time">{timeAgo(post.created_at)}</span>
-            </div>
-            <button className={`post-like-btn ${userLikes.has(post.id) ? 'liked' : ''}`} onClick={(e) => { e.stopPropagation(); handleLike(post.id) }} disabled={liking === post.id} title="Like this post">
-              <ThumbsUp size={14}/> {post.likes || 0}
-            </button>
+        <div className="post-author">
+          <div className="post-avatar">{getInitials(authorName)}</div>
+          <div className="post-author-info">
+            <span>{authorName}</span>
+            <span className="post-time">{timeAgo(post.created_at)}</span>
           </div>
-        )}
+          <button className={`post-like-btn ${userLikes.has(post.id) ? 'liked' : ''}`} onClick={(e) => { e.stopPropagation(); handleLike(post.id) }} disabled={liking === post.id} title="Like this post">
+            <ThumbsUp size={14}/> {post.likes || 0}
+          </button>
+        </div>
       </article>
     )
   }
