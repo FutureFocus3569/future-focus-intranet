@@ -411,12 +411,28 @@ function App(){
   const [openReviewCount, setOpenReviewCount] = useState(0);
 
   useEffect(() => {
-    // Check if we're in password reset flow (email link has access_token)
-    const hash = window.location.hash;
-    if (hash.includes('access_token') || hash.includes('type=recovery')) {
+    // Check if we're in invite/reset flow from email links.
+    const hash = window.location.hash || '';
+    const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+    const searchParams = new URLSearchParams(window.location.search || '');
+    const authType = searchParams.get('type') || hashParams.get('type');
+    const hasAccessToken = hashParams.has('access_token');
+    const hasAuthCode = searchParams.has('code');
+    const isInviteOrRecovery = authType === 'invite' || authType === 'recovery' || authType === 'signup';
+
+    if (hasAccessToken || hasAuthCode || isInviteOrRecovery) {
       setIsPasswordReset(true);
       // Avoid infinite loading state when arriving from invite/reset links.
       setSession(null);
+
+      // Supabase may deliver email auth links with a short-lived `code` query param.
+      // Exchange it in the background so updateUser({ password }) works immediately.
+      const code = searchParams.get('code');
+      if (code) {
+        supabase.auth.exchangeCodeForSession(code).catch((err) => {
+          console.error('Invite/recovery code exchange failed:', err);
+        });
+      }
       return;
     }
 
