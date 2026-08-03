@@ -18,6 +18,7 @@ import { PoliciesForReviewPage } from './pages/PoliciesForReview.jsx';
 import { OurPeoplePage } from './pages/OurPeoplePage.jsx';
 import { KnowledgeCentrePage } from './pages/KnowledgeCentre.jsx';
 import { CentresPage } from './pages/CentresPage.jsx';
+import { CelebrationsPage } from './pages/CelebrationsPage.jsx';
 import { isDocumentVisibleForCentre, isPolicyOpenForFeedback } from './lib/policyReview.js';
 import WellbeingCheckin from './components/WellbeingCheckin.jsx';
 import './styles.css';
@@ -66,15 +67,76 @@ const actions = [
   [Users, 'Staff Directory'], [LifeBuoy, 'Help'],
 ];
 
-const people = [
-  ['Sarah Lee', 'May 23', '/avatar-1.png'],
-  ['Amelia Brown', 'May 29', '/avatar-2.png'],
-];
+function getNextBirthdayDate(dateOfBirth) {
+  if (!dateOfBirth) return null;
+  const today = new Date();
+  const dob = new Date(dateOfBirth);
+  if (Number.isNaN(dob.getTime())) return null;
 
-const anniversaries = [
-  ['Lauren Smith', '5 Years', '/avatar-3.png'],
-  ['Brooke Jones', '2 Years', '/avatar-4.png'],
-];
+  const next = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+  if (next < today) next.setFullYear(today.getFullYear() + 1);
+  return next;
+}
+
+function getNextAnniversaryDate(startDate) {
+  if (!startDate) return null;
+  const today = new Date();
+  const start = new Date(startDate);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const next = new Date(today.getFullYear(), start.getMonth(), start.getDate());
+  if (next < today) next.setFullYear(today.getFullYear() + 1);
+  return next;
+}
+
+function buildBirthdayPeople(staffList) {
+  return (staffList || [])
+    .filter(person => person?.date_of_birth)
+    .map(person => {
+      const nextBirthday = getNextBirthdayDate(person.date_of_birth);
+      if (!nextBirthday) return null;
+      const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim() || 'Unknown Staff';
+      return {
+        id: person.id,
+        name: fullName,
+        dateLabel: nextBirthday.toLocaleDateString('en-NZ', { month: 'short', day: 'numeric' }),
+        photoUrl: person.photo_url || '/avatar-default.png',
+        sortDate: nextBirthday,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.sortDate - b.sortDate);
+}
+
+function buildAnniversaryPeople(staffList) {
+  const now = new Date();
+  return (staffList || [])
+    .filter(person => person?.start_date)
+    .map(person => {
+      const start = new Date(person.start_date);
+      if (Number.isNaN(start.getTime())) return null;
+
+      const years = now.getFullYear() - start.getFullYear() - ((now.getMonth() < start.getMonth() || (now.getMonth() === start.getMonth() && now.getDate() < start.getDate())) ? 1 : 0);
+      if (years < 0) return null;
+
+      const nextAnniversary = getNextAnniversaryDate(person.start_date);
+      const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim() || 'Unknown Staff';
+
+      return {
+        id: person.id,
+        name: fullName,
+        dateLabel: `${Math.max(0, years)} year${years === 1 ? '' : 's'}`,
+        photoUrl: person.photo_url || '/avatar-default.png',
+        sortDate: nextAnniversary || start,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.sortDate - b.sortDate);
+}
+
+function toPanelRows(peopleList, limit = 2) {
+  return (peopleList || []).slice(0, limit).map(person => [person.name, person.dateLabel, person.photoUrl]);
+}
 
 function Logo() {
   return (
@@ -383,12 +445,13 @@ function WellbeingSection({ userId, centreName }) {
   )
 }
 
-function PeoplePanel({title, rows = [], anniversary=false}) {
+function PeoplePanel({title, rows = [], anniversary=false, onViewAll}) {
   const safeRows = rows && Array.isArray(rows) ? rows : [];
   const moreCount = Math.max(0, safeRows.length - 2);
-  return <section className="panel people-panel"><SectionHeader title={title}/>
+  return <section className="panel people-panel"><SectionHeader title={title} onViewAll={onViewAll}/>
     {safeRows.slice(0, 2).map(([name,date,img])=><div className="person-row" key={name}><img src={img} alt={name}/><div><strong>{name}</strong><span>{date}</span></div>{anniversary ? <Trophy size={18}/> : <PartyPopper size={18}/>}</div>)}
-    {moreCount > 0 && <button className="more-link">{moreCount} more {anniversary ? 'this year' : 'coming up'} <ChevronRight size={13}/></button>}
+    {safeRows.length === 0 && <p style={{color:'#8fa3ad',fontSize:13,padding:'8px 0'}}>No staff records available yet.</p>}
+    {moreCount > 0 && <button className="more-link" onClick={onViewAll}>{moreCount} more {anniversary ? 'this year' : 'coming up'} <ChevronRight size={13}/></button>}
   </section>
 }
 
@@ -406,7 +469,9 @@ function App(){
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [page, setPage] = useState('Home');
   const [showProfile, setShowProfile] = useState(false);
-  const [upcomingBirthdays, setUpcomingBirthdays] = useState([]);
+  const [staffDirectory, setStaffDirectory] = useState([]);
+  const [birthdayPeople, setBirthdayPeople] = useState([]);
+  const [anniversaryPeople, setAnniversaryPeople] = useState([]);
   const [isPasswordReset, setIsPasswordReset] = useState(false);
   const [openReviewCount, setOpenReviewCount] = useState(0);
 
@@ -451,55 +516,49 @@ function App(){
   async function loadProfile(userId) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     setProfile(data);
-    loadBirthdays();
+    loadCelebrations();
   }
 
-  async function loadBirthdays() {
+  async function loadCelebrations() {
     try {
-      const { data: staffList, error } = await supabase.from('profiles').select('first_name, last_name, date_of_birth, photo_url');
-      
-      if (error) {
-        console.error('Error loading birthdays:', error);
-        return;
+      let staffList = [];
+
+      const { data: { session: activeSession } } = await supabase.auth.getSession();
+      const accessToken = activeSession?.access_token;
+
+      if (accessToken) {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-staff`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+        });
+
+        if (response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          staffList = Array.isArray(payload?.staff) ? payload.staff : [];
+        }
       }
 
-      if (!staffList || staffList.length === 0) return;
+      if (!staffList.length) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, date_of_birth, start_date, photo_url');
 
-      const today = new Date();
-      const upcomingList = [];
+        if (error) {
+          console.error('Error loading celebrations staff list:', error);
+          return;
+        }
 
-      staffList.forEach(staff => {
-        if (!staff.date_of_birth) return;
-        
-        const dob = new Date(staff.date_of_birth);
-        const nextBirthday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
-        
-        // If birthday has passed this year, check next year
-        if (nextBirthday < today) {
-          nextBirthday.setFullYear(today.getFullYear() + 1);
-        }
-        
-        // Calculate days until birthday
-        const daysUntil = Math.floor((nextBirthday - today) / (1000 * 60 * 60 * 24));
-        
-        // Include if within 30 days
-        if (daysUntil >= 0 && daysUntil <= 30) {
-          const dateStr = nextBirthday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          const fullName = `${staff.first_name} ${staff.last_name}`;
-          const photoUrl = staff.photo_url || '/avatar-default.png';
-          upcomingList.push([fullName, dateStr, photoUrl, nextBirthday]);
-        }
-      });
-      
-      // Sort by birthday date
-      upcomingList.sort((a, b) => a[3] - b[3]);
-      // Remove the date object from the array for display
-      upcomingList.forEach(item => item.pop());
-      
-      console.log('Upcoming birthdays:', upcomingList);
-      setUpcomingBirthdays(upcomingList);
+        staffList = data || [];
+      }
+
+      setStaffDirectory(staffList);
+      setBirthdayPeople(buildBirthdayPeople(staffList));
+      setAnniversaryPeople(buildAnniversaryPeople(staffList));
     } catch (err) {
-      console.error('Birthday load error:', err);
+      console.error('Celebrations load error:', err);
     }
   }
 
@@ -561,6 +620,10 @@ function App(){
           <EventsPage currentProfile={profile} />
         ) : page === 'Our People' ? (
           <OurPeoplePage currentProfile={profile} />
+        ) : page === 'Birthdays' ? (
+          <CelebrationsPage currentProfile={profile} type="birthdays" staff={staffDirectory} onBack={() => setPage('Home')} />
+        ) : page === 'Anniversaries' ? (
+          <CelebrationsPage currentProfile={profile} type="anniversaries" staff={staffDirectory} onBack={() => setPage('Home')} />
         ) : page === "What's Happening" ? (
           <WhatsHappeningPage currentProfile={profile} />
         ) : page === 'FF AI' ? (
@@ -574,7 +637,7 @@ function App(){
             <Hero profile={profile} />
             <section className="feature-grid">{topCards.map(item=><TopCard key={item.title} item={item} onNavigate={setPage}/>)}</section>
             <section className="mid-grid"><NewsPanel/><EventsPanel onViewAll={() => setPage('Calendar')}/><QuickActions onNavigate={setPage} openReviewCount={openReviewCount}/></section>
-            <section className="bottom-grid"><CentreSnapshot /><PeoplePanel title="Birthdays" rows={people}/><PeoplePanel title="Anniversaries" rows={anniversaries} anniversary/><Resources/></section>
+            <section className="bottom-grid"><CentreSnapshot /><PeoplePanel title="Birthdays" rows={toPanelRows(birthdayPeople)} onViewAll={() => setPage('Birthdays')} /><PeoplePanel title="Anniversaries" rows={toPanelRows(anniversaryPeople)} anniversary onViewAll={() => setPage('Anniversaries')} /><Resources/></section>
             <div style={{ display: 'grid', gridTemplateColumns: '1.5fr .95fr .95fr 1.2fr', gap: 16, marginTop: 16, marginBottom: 16 }}>
               <div style={{ gridColumn: 'span 2' }}>
                 <WellbeingSection userId={profile?.id} centreName={profile?.centre} />

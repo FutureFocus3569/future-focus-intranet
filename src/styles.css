@@ -216,6 +216,31 @@
 .trends-section-liked{border-left:4px solid #1a6eb5;background:rgba(26,110,181,0.04);padding-left:12px;margin-left:-12px}
 .trends-section-viewed{border-left:4px solid #0e9a8a;background:rgba(14,154,138,0.04);padding-left:12px;margin-left:-12px}
 
+/* ── Celebrations pages ── */
+.celebrations-page{padding:24px 8px 8px}
+.celebrations-header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.celebrations-header h1{margin:0;font-size:30px;color:#0d2b36}
+.celebrations-header p{margin:4px 0 0;font-size:13px;color:#6b7e8a;display:flex;align-items:center;gap:6px}
+.celebration-cards{display:flex;flex-direction:column;gap:12px}
+.celebration-card{background:#fff;border:1px solid #e4edf3;border-radius:12px;padding:12px}
+.celebration-person-head{display:flex;align-items:center;gap:10px}
+.celebration-avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.celebration-avatar-fallback{display:grid;place-items:center;background:linear-gradient(135deg,#1a6eb5,#0e9a8a);color:#fff;font-size:13px;font-weight:700}
+.celebration-person-meta{display:flex;flex-direction:column;gap:2px;flex:1}
+.celebration-person-meta h3{margin:0;font-size:16px;color:#0d2b36}
+.celebration-person-meta p{margin:0;font-size:12px;color:#6b7e8a}
+.celebration-person-meta small{font-size:12px;color:#4b6474}
+.celebration-comments{margin-top:10px;padding-top:10px;border-top:1px solid #eef3f6}
+.celebration-comment-list{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow:auto;padding-right:4px}
+.celebration-comment-item{border:1px solid #e6eef3;background:#f9fcfe;border-radius:10px;padding:8px}
+.celebration-comment-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.celebration-comment-top strong{font-size:12px;color:#0d2b36}
+.celebration-comment-top span{font-size:11px;color:#8fa3ad}
+.celebration-comment-item p{margin:6px 0 0;font-size:13px;color:#324a59;white-space:pre-wrap}
+.celebration-empty-note{margin:0 0 8px;font-size:12px;color:#6b7e8a}
+.celebration-comment-form{display:flex;align-items:center;gap:8px;margin-top:10px}
+.celebration-comment-form input{flex:1;border:1px solid #d0dde5;border-radius:9px;padding:9px 10px;font-size:13px}
+
 /* ── Centre Hub ── */
 .centre-page{padding:32px 36px;max-width:1300px}
 .centre-switcher{display:flex;flex-direction:column;gap:6px;min-width:220px}
@@ -578,4 +603,4 @@ button{cursor:pointer}
 
 @media(max-width:1180px){.feature-grid{grid-template-columns:repeat(2,1fr)}.mid-grid{grid-template-columns:1.6fr 1fr}.action-panel{grid-column:1/-1}.bottom-grid{grid-template-columns:repeat(2,1fr)}.hero-copy h1{font-size:48px}.profile div{display:none}}
 @media(max-width:900px){.feature-grid{grid-template-columns:repeat(2,1fr)}.posts-feed{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}.whats-happening-container{grid-template-columns:1fr}.whats-happening-sidebar{display:none}}
-@media(max-width:520px){.sidebar{transform:translateX(-100%)}.sidebar.sidebar-open{transform:translateX(0)}.sidebar-close{display:block}.hamburger{display:flex}.brand-copy,.quick-title,.quick-links,.collapse{display:none}.brand-lockup{padding:0 0 20px;justify-content:center}.ff-mark{font-size:24px}.main-area{margin-left:0;width:100%}.topbar{padding:0 14px}.search-box{width:100%;margin-right:8px}.profile{display:none}.page-content{padding:14px}.hero{height:240px}.hero-copy{left:28px;top:28px}.hero-copy h1{font-size:43px}.hero-copy p{font-size:17px}.feature-grid{grid-template-columns:repeat(2,1fr)}.posts-feed{grid-template-columns:1fr}.mid-grid,.bottom-grid{grid-template-columns:1fr}.news-grid{grid-template-columns:1fr}.news-card{display:grid;grid-template-columns:110px 1fr}.news-card img{grid-row:1/5;width:100px;height:90px}.metric-row{grid-template-columns:repeat(2,1fr);gap:18px}.metric:nth-child(2){border-right:0}}
+@media(max-width:520px){.sidebar{transform:translateX(-100%)}.sidebar.sidebar-open{transform:translateX(0)}.sidebar-close{display:block}.hamburger{display:flex}.brand-copy,.quick-title,.quick-links,.collapse{display:none}.brand-lockup{padding:0 0 20px;justify-content:center}.ff-mark{font-size:24px}.main-area{margin-left:0;width:100%}.topbar{padding:0 14px}.search-box{width:100%;margin-right:8px}.profile{display:none}.page-content{padding:14px}.hero{height:240px}.hero-copy{left:28px;top:28px}.hero-copy h1{font-size:43px}.hero-copy p{font-size:17px}.feature-grid{grid-template-columns:repeat(2,1fr)}.posts-feed{grid-template-columns:1fr}.mid-grid,.bottom-grid{grid-template-columns:1fr}.news-grid{grid-template-columns:1fr}.news-card{display:grid;grid-template-columns:110px 1fr}.news-card img{grid-row:1/5;width:100px;height:90px}.metric-row{grid-template-columns:repeat(2,1fr);gap:18px}.metric:nth-child(2){border-right:0}.celebrations-header{flex-direction:column;align-items:flex-start}.celebration-person-head{align-items:flex-start;flex-wrap:wrap}.celebration-comment-form{flex-direction:column;align-items:stretch}}
