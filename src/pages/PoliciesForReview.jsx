@@ -293,7 +293,6 @@ export function PoliciesForReviewPage({ currentProfile }) {
                     </div>
                     <div className="review-card-badges">
                       <span className="review-chip">{categoryLabel}</span>
-                      <span className="review-chip review-chip-accent">v{doc.version || '1.0'}</span>
                       <span className="review-chip" style={{ background: reviewStateMeta.bg, color: reviewStateMeta.color }}>{reviewStateMeta.label}</span>
                     </div>
                   </div>

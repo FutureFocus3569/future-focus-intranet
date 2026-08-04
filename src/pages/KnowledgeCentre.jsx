@@ -49,58 +49,6 @@ import {
 } from '../lib/documentService.js'
 import { calculateNextReviewDate, calculateFeedbackOpenDate } from '../lib/policyReview.js'
 
-function todayDateString() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function buildPolicyTemplate({ title, reviewFrequencyMonths, existingContent = '' }) {
-  const reviewedDate = todayDateString()
-  const frequency = Number(reviewFrequencyMonths) || 12
-  const nextReviewDate = calculateNextReviewDate(reviewedDate, frequency) || ''
-  const notes = existingContent.trim()
-
-  return [
-    'FUTURE FOCUS EARLY CHILDHOOD EDUCATION',
-    'POLICY DOCUMENT',
-    '',
-    `Policy Title: ${title || 'Untitled Policy'}`,
-    `Effective Date: ${reviewedDate}`,
-    `Last Reviewed Date: ${reviewedDate}`,
-    `Next Review Date: ${nextReviewDate}`,
-    `Review Frequency: ${frequency} months`,
-    '',
-    '1. Purpose',
-    '[Describe why this policy exists and what it protects or enables.]',
-    '',
-    '2. Scope',
-    '[Who this policy applies to, including staff, families, and children.]',
-    '',
-    '3. Policy Statement',
-    '[High-level commitment and principles.]',
-    '',
-    '4. Procedures',
-    '[Step-by-step process staff must follow.]',
-    '',
-    '5. Roles and Responsibilities',
-    '[Outline who is responsible for what.]',
-    '',
-    '6. Communication with Families',
-    '[How this policy is communicated to parents/caregivers.]',
-    '',
-    '7. Related Documents and Licensing Criteria',
-    '[List related procedures, forms, and licensing references.]',
-    '',
-    '8. Version History',
-    `- ${reviewedDate}: New reviewed version created from policy review feedback.`,
-    '',
-    '9. Approval',
-    '[Approved by: Name / Role / Date]',
-    '',
-    notes ? '--- Existing Policy Content (for reference during rewrite) ---' : '',
-    notes,
-  ].filter(Boolean).join('\n')
-}
-
 // ──────────────────────────────────────────────────────────
 // ADD / EDIT DOCUMENT MODAL
 // ──────────────────────────────────────────────────────────
@@ -622,8 +570,6 @@ function DocumentRow({ doc, canManage, onEdit, onApprove, onPublish, onArchive, 
             </>
           )}
           <span className="kc-dot" />
-          <span>v{doc.version}</span>
-          <span className="kc-dot" />
           <span>Added {uploadDate}</span>
         </div>
 
@@ -788,7 +734,6 @@ export function KnowledgeCentrePage({ currentProfile }) {
   const [creatingVersion, setCreatingVersion] = useState(false)
   const [createVersionError, setCreateVersionError] = useState('')
   const [createVersionSuccess, setCreateVersionSuccess] = useState('')
-  const [templateApplied, setTemplateApplied] = useState(false)
   const [originalPolicyReference, setOriginalPolicyReference] = useState('')
   const policyContentRef = useRef(null)
 
@@ -919,12 +864,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
       const existingText = (fullDoc.extracted_text || '').trim()
       setOriginalPolicyReference(existingText)
       setNewPolicyFrequency(frequency)
-      setNewPolicyContent(existingText || buildPolicyTemplate({
-        title: fullDoc.title,
-        reviewFrequencyMonths: frequency,
-        existingContent: '',
-      }))
-      setTemplateApplied(false)
+      setNewPolicyContent(existingText)
       setShowCreateVersionModal(true)
     } catch (err) {
       setCreateVersionError(err.message || 'Could not load the full policy for editing.')
@@ -932,27 +872,8 @@ export function KnowledgeCentrePage({ currentProfile }) {
     setCreatingVersion(false)
   }
 
-  function applyPolicyTemplate() {
-    if (!analysisPolicy) return
-    const frequency = Number(newPolicyFrequency || analysisPolicy.review_frequency_months || 12)
-    setNewPolicyContent(buildPolicyTemplate({
-      title: analysisPolicy.title,
-      reviewFrequencyMonths: frequency,
-      existingContent: originalPolicyReference,
-    }))
-    setTemplateApplied(true)
-
-    // Bring the user to the start of the template headings after reapplying.
-    requestAnimationFrame(() => {
-      if (policyContentRef.current) {
-        policyContentRef.current.scrollTop = 0
-      }
-    })
-  }
-
   function resetDraftToCurrentPolicy() {
     setNewPolicyContent(originalPolicyReference || '')
-    setTemplateApplied(false)
     requestAnimationFrame(() => {
       if (policyContentRef.current) {
         policyContentRef.current.scrollTop = 0
@@ -1515,8 +1436,8 @@ export function KnowledgeCentrePage({ currentProfile }) {
               <div style={{ border: '1px solid #dbe5ea', borderRadius: 10, padding: '12px 14px', background: '#f8fbfc', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <img src="/logo.png" alt="Future Focus" style={{ width: 120, height: 'auto', display: 'block' }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <strong style={{ fontSize: 14, color: '#16303b' }}>Future Focus Policy Template</strong>
-                  <span style={{ fontSize: 12, color: '#4a5f6b' }}>Review current policy and feedback, then edit your replacement draft below.</span>
+                  <strong style={{ fontSize: 14, color: '#16303b' }}>{analysisPolicy.title}</strong>
+                  <span style={{ fontSize: 12, color: '#4a5f6b' }}>Review staff feedback, then edit the policy text below.</span>
                 </div>
               </div>
               <div style={{ fontSize: 13, color: '#4a5f6b', lineHeight: 1.5 }}>
@@ -1529,10 +1450,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
                   min="1"
                   step="1"
                   value={newPolicyFrequency}
-                  onChange={e => {
-                    setNewPolicyFrequency(e.target.value)
-                    setTemplateApplied(false)
-                  }}
+                  onChange={e => setNewPolicyFrequency(e.target.value)}
                   disabled={creatingVersion}
                   style={{ border: '1px solid #d8e3e9', borderRadius: 8, padding: '10px 12px', fontSize: 14 }}
                 />
@@ -1584,14 +1502,11 @@ export function KnowledgeCentrePage({ currentProfile }) {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, color: '#4a5f6b' }}>
-                  Edit your new version below. Use template only if you want to rewrite into sectioned format.
+                  Edit the policy text below, then save to publish it.
                 </span>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button type="button" className="btn-secondary" onClick={resetDraftToCurrentPolicy} disabled={creatingVersion || !originalPolicyReference}>
                     Reset Draft to Current
-                  </button>
-                  <button type="button" className="btn-secondary" onClick={applyPolicyTemplate} disabled={creatingVersion}>
-                    {templateApplied ? 'Reapply Template' : 'Apply Template'}
                   </button>
                 </div>
               </div>
@@ -1601,10 +1516,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
                 <textarea
                   ref={policyContentRef}
                   value={newPolicyContent}
-                  onChange={e => {
-                    setNewPolicyContent(e.target.value)
-                    setTemplateApplied(false)
-                  }}
+                  onChange={e => setNewPolicyContent(e.target.value)}
                   rows={18}
                   disabled={creatingVersion}
                   placeholder="Paste or edit the full policy content here"
