@@ -47,7 +47,7 @@ import {
   uploadDocumentFile,
   getSignedUrl,
 } from '../lib/documentService.js'
-import { calculateNextReviewDate, calculateFeedbackOpenDate } from '../lib/policyReview.js'
+import { calculateNextReviewDate, calculateFeedbackOpenDate, formatPolicyTextForEditing } from '../lib/policyReview.js'
 
 // ──────────────────────────────────────────────────────────
 // ADD / EDIT DOCUMENT MODAL
@@ -861,7 +861,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
       const fullDoc = await getDocument(analysisPolicy.id)
       setAnalysisPolicy(fullDoc)
       const frequency = Number(fullDoc.review_frequency_months || 12)
-      const existingText = (fullDoc.extracted_text || '').trim()
+      const existingText = formatPolicyTextForEditing((fullDoc.extracted_text || '').trim())
       setOriginalPolicyReference(existingText)
       setNewPolicyFrequency(frequency)
       setNewPolicyContent(existingText)

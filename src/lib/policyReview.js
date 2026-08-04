@@ -1,3 +1,17 @@
+// Older uploaded policy PDFs were text-extracted with no line breaks at all,
+// leaving bullet points ("•") as the only surviving structure marker on one
+// long run-on line. This reformats that into one line per bullet/paragraph
+// so the text is actually readable when editing, without touching the
+// stored copy unless the user saves their edits.
+export function formatPolicyTextForEditing(text) {
+  if (!text) return ''
+  return text
+    .replace(/\s*•\s*/g, '\n• ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 export const REVIEW_STATUS_VALUES = [
   'not_due',
   'upcoming',
