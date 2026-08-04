@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { getSignedUrl } from '../lib/documentService.js'
 import { DOCUMENT_CATEGORIES } from '../lib/documentTypes.js'
 import { getPolicyFeedbackWindow, getPolicyReviewAlertState, isDocumentVisibleForCentre } from '../lib/policyReview.js'
+import { PolicyPrintView } from '../components/PolicyPrintView.jsx'
 
 function formatDate(value) {
   if (!value) return '—'
@@ -43,6 +44,7 @@ export function PoliciesForReviewPage({ currentProfile }) {
   const [ownerProfiles, setOwnerProfiles] = useState({})
   const [feedbackStatusMap, setFeedbackStatusMap] = useState({})
   const [selectedDoc, setSelectedDoc] = useState(null)
+  const [printViewDoc, setPrintViewDoc] = useState(null)
   const [feedbackForm, setFeedbackForm] = useState({
     section_reference: '',
     feedback: '',
@@ -128,6 +130,10 @@ export function PoliciesForReviewPage({ currentProfile }) {
   }
 
   async function handleView(doc) {
+    if (Array.isArray(doc.content_blocks) && doc.content_blocks.length > 0) {
+      setPrintViewDoc(doc)
+      return
+    }
     try {
       const { signedUrl } = await getSignedUrl(doc.storage_path)
       window.open(signedUrl, '_blank', 'noopener,noreferrer')
@@ -421,6 +427,8 @@ export function PoliciesForReviewPage({ currentProfile }) {
           </div>
         </div>
       )}
+
+      {printViewDoc && <PolicyPrintView doc={printViewDoc} onClose={() => setPrintViewDoc(null)} />}
     </div>
   )
 }

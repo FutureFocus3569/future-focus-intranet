@@ -1,15 +1,32 @@
-// Older uploaded policy PDFs were text-extracted with no line breaks at all,
-// leaving bullet points ("•") as the only surviving structure marker on one
-// long run-on line. This reformats that into one line per bullet/paragraph
-// so the text is actually readable when editing, without touching the
-// stored copy unless the user saves their edits.
-export function formatPolicyTextForEditing(text) {
-  if (!text) return ''
-  return text
-    .replace(/\s*•\s*/g, '\n• ')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+// Best-effort one-time conversion from a legacy flat-text policy into
+// structured {lead, text} bullet blocks, splitting on the "•" markers left
+// over from PDF extraction. Bold lead-ins can't be reliably guessed from
+// flat text, so lead starts empty — the user separates it out once, and it
+// stays structured from then on.
+export function parseFlatTextToBlocks(text) {
+  const cleaned = (text || '').replace(/[ \t]{2,}/g, ' ').trim()
+  if (!cleaned) return []
+
+  const parts = cleaned.split(/\s*•\s*/).map(part => part.trim()).filter(Boolean)
+  if (parts.length === 0) return []
+
+  return parts.map(part => ({ lead: '', text: part }))
+}
+
+// Flattens structured bullet blocks back into plain text, used as the
+// extracted_text fallback (e.g. for the FF AI assistant's policy search,
+// which reads extracted_text directly).
+export function blocksToPlainText(blocks) {
+  if (!Array.isArray(blocks) || blocks.length === 0) return ''
+  return blocks
+    .map(block => {
+      const lead = (block?.lead || '').trim()
+      const text = (block?.text || '').trim()
+      if (!lead && !text) return null
+      return lead ? `${lead} – ${text}` : text
+    })
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 export const REVIEW_STATUS_VALUES = [

@@ -5,7 +5,7 @@
 
 import { supabase } from './supabase'
 import { DOCUMENT_STATUS } from './documentTypes'
-import { calculateFeedbackOpenDate, calculateNextReviewDate, normalizeReviewPayload } from './policyReview'
+import { calculateFeedbackOpenDate, calculateNextReviewDate, normalizeReviewPayload, blocksToPlainText } from './policyReview'
 
 /**
  * CREATE A NEW DOCUMENT
@@ -502,7 +502,8 @@ export async function createReviewedPolicyVersion(sourceDocument, options, userI
   try {
     if (!sourceDocument?.id) throw new Error('Source policy is required')
 
-    const editedText = (options?.editedText || '').trim()
+    const contentBlocks = Array.isArray(options?.contentBlocks) ? options.contentBlocks : null
+    const editedText = contentBlocks ? blocksToPlainText(contentBlocks) : (options?.editedText || '').trim()
     if (!editedText) throw new Error('Policy content cannot be empty')
 
     const reviewFrequencyMonths = Number(options?.reviewFrequencyMonths || sourceDocument.review_frequency_months || 12)
@@ -518,7 +519,8 @@ export async function createReviewedPolicyVersion(sourceDocument, options, userI
     const reviewedPayload = normalizeReviewPayload({
       title: sourceDocument.title,
       description: sourceDocument.description || null,
-      category: sourceDocument.category,
+      category: options?.category?.trim() || sourceDocument.category,
+      licensing_criteria: options?.licensingCriteria?.trim() ?? sourceDocument.licensing_criteria ?? null,
       document_type: sourceDocument.document_type || 'policy',
       owner_id: sourceDocument.owner_id || null,
       storage_bucket: sourceDocument.storage_bucket || 'policy-documents',
@@ -547,6 +549,7 @@ export async function createReviewedPolicyVersion(sourceDocument, options, userI
       updated_by: userId,
       notes: sourceDocument.notes || null,
       extracted_text: editedText,
+      content_blocks: contentBlocks,
       ai_processing_status: 'completed',
       ai_extracted_metadata: {
         source: 'policy-review-editor',

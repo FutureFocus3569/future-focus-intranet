@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Plus, X, FileText, Search, ChevronDown, Eye, Edit2, Check, BookOpen, Archive, Trash2, UploadCloud, AlertCircle, CheckCircle, RotateCcw, Zap } from 'lucide-react'
+import { Plus, X, FileText, Search, ChevronDown, ChevronUp, Eye, Edit2, Check, BookOpen, Archive, Trash2, UploadCloud, AlertCircle, CheckCircle, RotateCcw, Zap, Printer } from 'lucide-react'
 import { supabase, CENTRES } from '../lib/supabase.js'
 import { analyzePolicyFeedback } from '../lib/policyAnalyzer.js'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -47,7 +47,8 @@ import {
   uploadDocumentFile,
   getSignedUrl,
 } from '../lib/documentService.js'
-import { calculateNextReviewDate, calculateFeedbackOpenDate, formatPolicyTextForEditing } from '../lib/policyReview.js'
+import { calculateNextReviewDate, calculateFeedbackOpenDate, parseFlatTextToBlocks } from '../lib/policyReview.js'
+import { PolicyPrintView } from '../components/PolicyPrintView.jsx'
 
 // ──────────────────────────────────────────────────────────
 // ADD / EDIT DOCUMENT MODAL
@@ -729,13 +730,15 @@ export function KnowledgeCentrePage({ currentProfile }) {
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
   const [showCreateVersionModal, setShowCreateVersionModal] = useState(false)
-  const [newPolicyContent, setNewPolicyContent] = useState('')
+  const [newPolicyBlocks, setNewPolicyBlocks] = useState([])
   const [newPolicyFrequency, setNewPolicyFrequency] = useState(12)
+  const [newPolicyCategory, setNewPolicyCategory] = useState('')
+  const [newPolicyLicensingCriteria, setNewPolicyLicensingCriteria] = useState('')
   const [creatingVersion, setCreatingVersion] = useState(false)
   const [createVersionError, setCreateVersionError] = useState('')
   const [createVersionSuccess, setCreateVersionSuccess] = useState('')
-  const [originalPolicyReference, setOriginalPolicyReference] = useState('')
-  const policyContentRef = useRef(null)
+  const [originalPolicyBlocks, setOriginalPolicyBlocks] = useState([])
+  const [showPrintView, setShowPrintView] = useState(null)
 
   // Close review state
   const [closingReviewId, setClosingReviewId] = useState(null)
@@ -861,10 +864,14 @@ export function KnowledgeCentrePage({ currentProfile }) {
       const fullDoc = await getDocument(analysisPolicy.id)
       setAnalysisPolicy(fullDoc)
       const frequency = Number(fullDoc.review_frequency_months || 12)
-      const existingText = formatPolicyTextForEditing((fullDoc.extracted_text || '').trim())
-      setOriginalPolicyReference(existingText)
+      const blocks = Array.isArray(fullDoc.content_blocks) && fullDoc.content_blocks.length > 0
+        ? fullDoc.content_blocks
+        : parseFlatTextToBlocks(fullDoc.extracted_text)
+      setOriginalPolicyBlocks(blocks)
+      setNewPolicyBlocks(blocks.length > 0 ? blocks : [{ lead: '', text: '' }])
       setNewPolicyFrequency(frequency)
-      setNewPolicyContent(existingText)
+      setNewPolicyCategory(fullDoc.category || '')
+      setNewPolicyLicensingCriteria(fullDoc.licensing_criteria || '')
       setShowCreateVersionModal(true)
     } catch (err) {
       setCreateVersionError(err.message || 'Could not load the full policy for editing.')
@@ -873,22 +880,41 @@ export function KnowledgeCentrePage({ currentProfile }) {
   }
 
   function resetDraftToCurrentPolicy() {
-    setNewPolicyContent(originalPolicyReference || '')
-    requestAnimationFrame(() => {
-      if (policyContentRef.current) {
-        policyContentRef.current.scrollTop = 0
-      }
+    setNewPolicyBlocks(originalPolicyBlocks.length > 0 ? originalPolicyBlocks : [{ lead: '', text: '' }])
+  }
+
+  function updatePolicyBlock(index, field, value) {
+    setNewPolicyBlocks(blocks => blocks.map((block, i) => (i === index ? { ...block, [field]: value } : block)))
+  }
+
+  function addPolicyBlock() {
+    setNewPolicyBlocks(blocks => [...blocks, { lead: '', text: '' }])
+  }
+
+  function removePolicyBlock(index) {
+    setNewPolicyBlocks(blocks => blocks.filter((_, i) => i !== index))
+  }
+
+  function movePolicyBlock(index, direction) {
+    setNewPolicyBlocks(blocks => {
+      const target = index + direction
+      if (target < 0 || target >= blocks.length) return blocks
+      const next = [...blocks]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
     })
   }
 
   async function handleCreatePolicyVersion() {
     if (!analysisPolicy) return
 
-    const cleanedContent = newPolicyContent.trim()
+    const cleanedBlocks = newPolicyBlocks
+      .map(block => ({ lead: (block.lead || '').trim(), text: (block.text || '').trim() }))
+      .filter(block => block.lead || block.text)
     const frequency = Number(newPolicyFrequency)
 
-    if (!cleanedContent) {
-      setCreateVersionError('Please add policy content before creating a new version.')
+    if (cleanedBlocks.length === 0) {
+      setCreateVersionError('Please add at least one bullet point before creating a new version.')
       return
     }
 
@@ -904,8 +930,10 @@ export function KnowledgeCentrePage({ currentProfile }) {
       await createReviewedPolicyVersion(
         analysisPolicy,
         {
-          editedText: cleanedContent,
+          contentBlocks: cleanedBlocks,
           reviewFrequencyMonths: frequency,
+          category: newPolicyCategory,
+          licensingCriteria: newPolicyLicensingCriteria,
         },
         userId
       )
@@ -1119,6 +1147,16 @@ export function KnowledgeCentrePage({ currentProfile }) {
                       <span className="kc-badge-count">{doc.feedbackCount} feedback submission{doc.feedbackCount !== 1 ? 's' : ''}</span>
                     </div>
                   </div>
+                  <button
+                    className="btn-secondary"
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+                    onClick={async () => {
+                      const fullDoc = await getDocument(doc.id)
+                      setShowPrintView(fullDoc)
+                    }}
+                  >
+                    <Printer size={14} /> Print / View
+                  </button>
                 </div>
                 {doc.feedbackCount > 0 && (
                   <div className="kc-feedback-list">
@@ -1456,15 +1494,28 @@ export function KnowledgeCentrePage({ currentProfile }) {
                 />
               </label>
 
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <span style={{ fontSize: 13, color: '#35505d', fontWeight: 600 }}>Current published policy (read-only)</span>
-                <textarea
-                  value={originalPolicyReference || 'No extracted policy text was found on this document.'}
-                  readOnly
-                  rows={10}
-                  style={{ width: '100%', border: '1px solid #d8e3e9', borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 1.5, fontFamily: 'inherit', background: '#f7fafb', color: '#304754', resize: 'vertical' }}
-                />
-              </label>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 200px' }}>
+                  <span style={{ fontSize: 13, color: '#35505d', fontWeight: 600 }}>Policy category</span>
+                  <input
+                    value={newPolicyCategory}
+                    onChange={e => setNewPolicyCategory(e.target.value)}
+                    disabled={creatingVersion}
+                    placeholder="e.g. Governance, Management and Administration"
+                    style={{ border: '1px solid #d8e3e9', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}
+                  />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: '1 1 200px' }}>
+                  <span style={{ fontSize: 13, color: '#35505d', fontWeight: 600 }}>Licensing criteria</span>
+                  <input
+                    value={newPolicyLicensingCriteria}
+                    onChange={e => setNewPolicyLicensingCriteria(e.target.value)}
+                    disabled={creatingVersion}
+                    placeholder="e.g. GMA102 Parent Involvement and Information"
+                    style={{ border: '1px solid #d8e3e9', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}
+                  />
+                </label>
+              </div>
 
               {analysis && (
                 <div style={{ border: '1px solid #e4ebef', borderRadius: 10, padding: 12, background: '#fff' }}>
@@ -1501,28 +1552,52 @@ export function KnowledgeCentrePage({ currentProfile }) {
               )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12, color: '#4a5f6b' }}>
-                  Edit the policy text below, then save to publish it.
+                <span style={{ fontSize: 13, color: '#35505d', fontWeight: 600 }}>
+                  Policy points (each becomes a bullet in the published policy)
                 </span>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button type="button" className="btn-secondary" onClick={resetDraftToCurrentPolicy} disabled={creatingVersion || !originalPolicyReference}>
-                    Reset Draft to Current
-                  </button>
-                </div>
+                <button type="button" className="btn-secondary" onClick={resetDraftToCurrentPolicy} disabled={creatingVersion || originalPolicyBlocks.length === 0}>
+                  Reset to Current
+                </button>
               </div>
 
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <span style={{ fontSize: 13, color: '#35505d', fontWeight: 600 }}>New policy draft (editable)</span>
-                <textarea
-                  ref={policyContentRef}
-                  value={newPolicyContent}
-                  onChange={e => setNewPolicyContent(e.target.value)}
-                  rows={18}
-                  disabled={creatingVersion}
-                  placeholder="Paste or edit the full policy content here"
-                  style={{ width: '100%', border: '1px solid #d8e3e9', borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical', minHeight: 280 }}
-                />
-              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {newPolicyBlocks.map((block, index) => (
+                  <div key={index} style={{ border: '1px solid #d8e3e9', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, background: '#fbfdfd' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#8fa3ad', letterSpacing: '.3px' }}>BULLET {index + 1}</span>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button type="button" className="btn-icon-edit" title="Move up" onClick={() => movePolicyBlock(index, -1)} disabled={creatingVersion || index === 0}>
+                          <ChevronUp size={14} />
+                        </button>
+                        <button type="button" className="btn-icon-edit" title="Move down" onClick={() => movePolicyBlock(index, 1)} disabled={creatingVersion || index === newPolicyBlocks.length - 1}>
+                          <ChevronDown size={14} />
+                        </button>
+                        <button type="button" className="btn-icon-danger" title="Remove bullet" onClick={() => removePolicyBlock(index)} disabled={creatingVersion}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      value={block.lead}
+                      onChange={e => updatePolicyBlock(index, 'lead', e.target.value)}
+                      disabled={creatingVersion}
+                      placeholder="Bold lead-in (optional) — e.g. Information concerning your child"
+                      style={{ border: '1px solid #d8e3e9', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontWeight: 700, color: '#0d2b36' }}
+                    />
+                    <textarea
+                      value={block.text}
+                      onChange={e => updatePolicyBlock(index, 'text', e.target.value)}
+                      disabled={creatingVersion}
+                      rows={3}
+                      placeholder="Bullet text"
+                      style={{ width: '100%', border: '1px solid #d8e3e9', borderRadius: 8, padding: '8px 10px', fontSize: 13, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical' }}
+                    />
+                  </div>
+                ))}
+                <button type="button" className="btn-secondary" onClick={addPolicyBlock} disabled={creatingVersion} style={{ alignSelf: 'flex-start' }}>
+                  <Plus size={14} /> Add Bullet
+                </button>
+              </div>
               {createVersionError && (
                 <div className="form-error" style={{ display: 'flex', gap: 8 }}>
                   <AlertCircle size={14} />{createVersionError}
@@ -1540,6 +1615,8 @@ export function KnowledgeCentrePage({ currentProfile }) {
           </div>
         </div>
       ) : null}
+
+      {showPrintView && <PolicyPrintView doc={showPrintView} onClose={() => setShowPrintView(null)} />}
     </div>
   )
 }
