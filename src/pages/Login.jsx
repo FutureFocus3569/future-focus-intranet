@@ -13,7 +13,8 @@ export function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const normalizedEmail = email.trim().toLowerCase()
+    const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
     if (error) setError(error.message)
     setLoading(false)
   }
@@ -22,8 +23,9 @@ export function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    const normalizedEmail = email.trim().toLowerCase()
     
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
       redirectTo: window.location.origin
     })
     

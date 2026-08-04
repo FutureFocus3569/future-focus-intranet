@@ -37,6 +37,8 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [inviteFallback, setInviteFallback] = useState(null)
+  const [copyState, setCopyState] = useState('')
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
 
@@ -44,6 +46,8 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setInviteFallback(null)
+    setCopyState('')
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(
@@ -62,6 +66,16 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
       let data = null
       try { data = raw ? JSON.parse(raw) : null } catch { data = raw }
       if (!res.ok) throw new Error(getApiErrorMessage(data, `Could not add staff member (HTTP ${res.status}).`))
+
+      if (data?.invite_delivery === 'manual_link' && data?.invite_link) {
+        onSuccess()
+        setInviteFallback({
+          link: data.invite_link,
+          message: data.message || 'Automatic invite email could not be delivered. Send this invite link manually.',
+        })
+        return
+      }
+
       onSuccess()
       onClose()
     } catch (err) {
@@ -83,7 +97,7 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
             <label>Last Name <input value={form.last_name} onChange={e => set('last_name', e.target.value)} required placeholder="Smith" /></label>
           </div>
           <div className="form-row">
-            <label>Email Address <input type="email" value={form.email} onChange={e => set('email', e.target.value)} required placeholder="jane@futurefocus.co.nz" /></label>
+            <label>Email Address <input type="email" value={form.email} onChange={e => set('email', e.target.value)} required placeholder="jane@gmail.com" /></label>
             <label>Mobile <input type="tel" value={form.mobile} onChange={e => set('mobile', e.target.value)} placeholder="+64 21 123 4567" /></label>
           </div>
           <div className="form-row">
@@ -116,11 +130,34 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
               placeholder="Optional personal message for the invite email"
             />
           </label>
+          {inviteFallback && (
+            <div className="form-error" style={{ background: '#eff6ff', color: '#1e3a8a', border: '1px solid #bfdbfe' }}>
+              <strong>Staff added. Manual send required:</strong> {inviteFallback.message}
+              <br />
+              <a href={inviteFallback.link} target="_blank" rel="noreferrer">Open invite link</a>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ marginLeft: 8 }}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(inviteFallback.link)
+                    setCopyState('copied')
+                  } catch {
+                    setCopyState('failed')
+                  }
+                }}
+              >
+                {copyState === 'copied' ? 'Copied' : 'Copy Link'}
+              </button>
+              {copyState === 'failed' && <span style={{ marginLeft: 8 }}>Could not copy automatically. Please copy manually.</span>}
+            </div>
+          )}
           {error && <div className="form-error">{error}</div>}
           <div className="form-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Adding…' : 'Add & Send Invite Email'}
+              {loading ? 'Adding…' : inviteFallback ? 'Create Another Staff Invite' : 'Add & Send Invite Email'}
             </button>
           </div>
         </form>
@@ -136,6 +173,7 @@ function EditStaffModal({ staff, onClose, onSuccess, callerProfile }) {
     role_title: staff?.role_title || '',
     permission: staff?.permission || 'staff',
     mobile: staff?.mobile || '',
+    date_of_birth: staff?.date_of_birth || '',
     start_date: staff?.start_date || '',
   })
   const [loading, setLoading] = useState(false)
@@ -164,6 +202,7 @@ function EditStaffModal({ staff, onClose, onSuccess, callerProfile }) {
             role_title: form.role_title,
             permission: form.permission,
             mobile: form.mobile,
+            date_of_birth: form.date_of_birth,
             start_date: form.start_date,
           }),
         }
@@ -210,6 +249,14 @@ function EditStaffModal({ staff, onClose, onSuccess, callerProfile }) {
               <input type="date" value={form.start_date || ''} onChange={e => set('start_date', e.target.value)} />
             </label>
           </div>
+          <label>Date of Birth
+            <input
+              type="date"
+              value={form.date_of_birth || ''}
+              onChange={e => set('date_of_birth', e.target.value)}
+              disabled={!isAdmin}
+            />
+          </label>
           <label>Permission Level
             <select value={form.permission} onChange={e => set('permission', e.target.value)} disabled={!isAdmin}>
               {PERMISSIONS

@@ -1,14 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Plus, X, FileText, Search, ChevronDown, Eye, Edit2, Check, BookOpen, Archive, Trash2, UploadCloud, AlertCircle, CheckCircle, RotateCcw, Zap } from 'lucide-react'
 import { supabase, CENTRES } from '../lib/supabase.js'
-import * as pdfjsLib from 'pdfjs-dist'
 import { analyzePolicyFeedback } from '../lib/policyAnalyzer.js'
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
-// Set up pdf.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).toString()
+let pdfJsLibPromise = null
+
+async function getPdfJsLib() {
+  if (!pdfJsLibPromise) {
+    pdfJsLibPromise = import('pdfjs-dist').then((mod) => {
+      const lib = mod?.GlobalWorkerOptions ? mod : mod?.default
+      if (!lib?.GlobalWorkerOptions) {
+        throw new Error('Failed to load pdfjs worker configuration')
+      }
+
+      // Prefer a bundled worker to avoid extraction failures when CDN access is blocked.
+      lib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl || `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${lib.version}/pdf.worker.min.mjs`
+      return lib
+    })
+  }
+  return pdfJsLibPromise
+}
 import {
   DOCUMENT_STATUS,
   DOCUMENT_TYPES,
@@ -20,8 +32,11 @@ import {
   canArchiveDocument,
   canRestoreDocument,
 } from '../lib/documentTypes.js'
+import { getPolicyReviewAlertState } from '../lib/policyReview.js'
 import {
   createDocument,
+  createReviewedPolicyVersion,
+  getDocument,
   updateDocument,
   getAllDocuments,
   approveDocument,
@@ -33,6 +48,58 @@ import {
   getSignedUrl,
 } from '../lib/documentService.js'
 import { calculateNextReviewDate, calculateFeedbackOpenDate } from '../lib/policyReview.js'
+
+function todayDateString() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function buildPolicyTemplate({ title, reviewFrequencyMonths, existingContent = '' }) {
+  const reviewedDate = todayDateString()
+  const frequency = Number(reviewFrequencyMonths) || 12
+  const nextReviewDate = calculateNextReviewDate(reviewedDate, frequency) || ''
+  const notes = existingContent.trim()
+
+  return [
+    'FUTURE FOCUS EARLY CHILDHOOD EDUCATION',
+    'POLICY DOCUMENT',
+    '',
+    `Policy Title: ${title || 'Untitled Policy'}`,
+    `Effective Date: ${reviewedDate}`,
+    `Last Reviewed Date: ${reviewedDate}`,
+    `Next Review Date: ${nextReviewDate}`,
+    `Review Frequency: ${frequency} months`,
+    '',
+    '1. Purpose',
+    '[Describe why this policy exists and what it protects or enables.]',
+    '',
+    '2. Scope',
+    '[Who this policy applies to, including staff, families, and children.]',
+    '',
+    '3. Policy Statement',
+    '[High-level commitment and principles.]',
+    '',
+    '4. Procedures',
+    '[Step-by-step process staff must follow.]',
+    '',
+    '5. Roles and Responsibilities',
+    '[Outline who is responsible for what.]',
+    '',
+    '6. Communication with Families',
+    '[How this policy is communicated to parents/caregivers.]',
+    '',
+    '7. Related Documents and Licensing Criteria',
+    '[List related procedures, forms, and licensing references.]',
+    '',
+    '8. Version History',
+    `- ${reviewedDate}: New reviewed version created from policy review feedback.`,
+    '',
+    '9. Approval',
+    '[Approved by: Name / Role / Date]',
+    '',
+    notes ? '--- Existing Policy Content (for reference during rewrite) ---' : '',
+    notes,
+  ].filter(Boolean).join('\n')
+}
 
 // ──────────────────────────────────────────────────────────
 // ADD / EDIT DOCUMENT MODAL
@@ -113,6 +180,7 @@ function DocumentModal({ onClose, onSaved, editDocument = null, currentUserId, p
     if (pdfFile.type !== 'application/pdf') return ''
     try {
       setExtracting(true)
+      const pdfjsLib = await getPdfJsLib()
       const arrayBuffer = await pdfFile.arrayBuffer()
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
       let fullText = ''
@@ -714,6 +782,15 @@ export function KnowledgeCentrePage({ currentProfile }) {
   const [analysis, setAnalysis] = useState(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
+  const [showCreateVersionModal, setShowCreateVersionModal] = useState(false)
+  const [newPolicyContent, setNewPolicyContent] = useState('')
+  const [newPolicyFrequency, setNewPolicyFrequency] = useState(12)
+  const [creatingVersion, setCreatingVersion] = useState(false)
+  const [createVersionError, setCreateVersionError] = useState('')
+  const [createVersionSuccess, setCreateVersionSuccess] = useState('')
+  const [templateApplied, setTemplateApplied] = useState(false)
+  const [originalPolicyReference, setOriginalPolicyReference] = useState('')
+  const policyContentRef = useRef(null)
 
   // Close review state
   const [closingReviewId, setClosingReviewId] = useState(null)
@@ -763,7 +840,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
       // Get all published documents with review data
       const { data: docs } = await supabase
         .from('documents')
-        .select('id, title, status, review_feedback_opens_at, review_feedback_closes_at, document_type, parent_document_id')
+        .select('id, title, status, review_feedback_opens_at, review_feedback_closes_at, review_frequency_months, document_type, parent_document_id')
         .eq('status', 'published')
         .eq('document_type', 'policy')
         .is('parent_document_id', null)
@@ -775,7 +852,6 @@ export function KnowledgeCentrePage({ currentProfile }) {
       }
 
       // For each document, get feedback
-      const today = new Date().toISOString().slice(0, 10)
       const reviewDocs = []
 
       for (const doc of docs) {
@@ -785,13 +861,12 @@ export function KnowledgeCentrePage({ currentProfile }) {
           .eq('document_id', doc.id)
           .order('submitted_at', { ascending: false })
 
-        // Check if document is currently open for review
-        const opens = doc.review_feedback_opens_at
-        const closes = doc.review_feedback_closes_at
-        const isOpen = opens && closes && today >= opens && today < closes
+        const reviewState = getPolicyReviewAlertState(doc)
+        const isOpen = reviewState === 'open' || reviewState === 'overdue'
 
         reviewDocs.push({
           ...doc,
+          reviewState,
           isOpen,
           feedbackCount: (feedback || []).length,
           feedback: feedback || [],
@@ -802,8 +877,9 @@ export function KnowledgeCentrePage({ currentProfile }) {
     } catch (err) {
       console.error('Error loading policy review data:', err)
       setPolicyReviewData([])
+    } finally {
+      setPolicyReviewLoading(false)
     }
-    setPolicyReviewLoading(false)
   }
 
   async function analyzePolicyFeedbackAction(policyDoc) {
@@ -825,10 +901,105 @@ export function KnowledgeCentrePage({ currentProfile }) {
       const result = await analyzePolicyFeedback(feedbackArray, policyDoc.title, '')
       setAnalysis(result)
     } catch (err) {
-      setAnalysisError(err.message || 'Failed to analyze feedback. Please check your OpenAI API key.')
+      setAnalysisError(err.message || 'Failed to analyze feedback. Please try again.')
       console.error('Analysis error:', err)
     }
     setAnalysisLoading(false)
+  }
+
+  async function openCreateVersionModal() {
+    if (!analysisPolicy) return
+    setCreateVersionError('')
+    setCreateVersionSuccess('')
+    setCreatingVersion(true)
+    try {
+      const fullDoc = await getDocument(analysisPolicy.id)
+      setAnalysisPolicy(fullDoc)
+      const frequency = Number(fullDoc.review_frequency_months || 12)
+      const existingText = (fullDoc.extracted_text || '').trim()
+      setOriginalPolicyReference(existingText)
+      setNewPolicyFrequency(frequency)
+      setNewPolicyContent(existingText || buildPolicyTemplate({
+        title: fullDoc.title,
+        reviewFrequencyMonths: frequency,
+        existingContent: '',
+      }))
+      setTemplateApplied(false)
+      setShowCreateVersionModal(true)
+    } catch (err) {
+      setCreateVersionError(err.message || 'Could not load the full policy for editing.')
+    }
+    setCreatingVersion(false)
+  }
+
+  function applyPolicyTemplate() {
+    if (!analysisPolicy) return
+    const frequency = Number(newPolicyFrequency || analysisPolicy.review_frequency_months || 12)
+    setNewPolicyContent(buildPolicyTemplate({
+      title: analysisPolicy.title,
+      reviewFrequencyMonths: frequency,
+      existingContent: originalPolicyReference,
+    }))
+    setTemplateApplied(true)
+
+    // Bring the user to the start of the template headings after reapplying.
+    requestAnimationFrame(() => {
+      if (policyContentRef.current) {
+        policyContentRef.current.scrollTop = 0
+      }
+    })
+  }
+
+  function resetDraftToCurrentPolicy() {
+    setNewPolicyContent(originalPolicyReference || '')
+    setTemplateApplied(false)
+    requestAnimationFrame(() => {
+      if (policyContentRef.current) {
+        policyContentRef.current.scrollTop = 0
+      }
+    })
+  }
+
+  async function handleCreatePolicyVersion() {
+    if (!analysisPolicy) return
+
+    const cleanedContent = newPolicyContent.trim()
+    const frequency = Number(newPolicyFrequency)
+
+    if (!cleanedContent) {
+      setCreateVersionError('Please add policy content before creating a new version.')
+      return
+    }
+
+    if (!Number.isFinite(frequency) || frequency <= 0) {
+      setCreateVersionError('Review frequency must be a positive number of months.')
+      return
+    }
+
+    setCreatingVersion(true)
+    setCreateVersionError('')
+    setCreateVersionSuccess('')
+    try {
+      await createReviewedPolicyVersion(
+        analysisPolicy,
+        {
+          editedText: cleanedContent,
+          reviewFrequencyMonths: frequency,
+        },
+        userId
+      )
+
+      setCreateVersionSuccess('New version published. Previous version archived. Review cycle has been reset.')
+      setShowCreateVersionModal(false)
+      setAnalysisPolicy(null)
+      setAnalysis(null)
+      setAnalysisError('')
+      await loadPolicyReviewData()
+      await loadDocuments()
+    } catch (err) {
+      setCreateVersionError(err.message || 'Could not create policy version.')
+    }
+    setCreatingVersion(false)
   }
 
   async function closeReviewEarly(policyDoc) {
@@ -1003,6 +1174,11 @@ export function KnowledgeCentrePage({ currentProfile }) {
         </div>
       ) : activeTab === 'policy-review' ? (
         <div className="kc-policy-review">
+          {createVersionSuccess && (
+            <div className="form-success" style={{ marginBottom: 12 }}>
+              {createVersionSuccess}
+            </div>
+          )}
           {policyReviewLoading ? (
             <div className="kc-empty">Loading…</div>
           ) : policyReviewData.length === 0 ? (
@@ -1040,7 +1216,9 @@ export function KnowledgeCentrePage({ currentProfile }) {
                             <strong>Section:</strong> {fb.section_reference}
                           </div>
                         )}
-                        <div className="kc-feedback-text">{fb.feedback}</div>
+                        <div className="kc-feedback-text">
+                          {fb.status === 'reviewed' ? 'Reviewed, no feedback to provide.' : fb.feedback}
+                        </div>
                         {fb.suggested_wording && (
                           <div className="kc-feedback-suggestion">
                             <strong>Suggested wording:</strong> {fb.suggested_wording}
@@ -1234,7 +1412,10 @@ export function KnowledgeCentrePage({ currentProfile }) {
           loading={deleteLoading}
         />
       )}
-      {analysisPolicy && analysis ? (
+        </>
+      )}
+
+      {analysisPolicy ? (
         <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={() => { setAnalysisPolicy(null); setAnalysis(null); setAnalysisError('') }}>
           <div className="modal-card large" style={{ position: 'relative', zIndex: 10000, background: 'white', borderRadius: 12, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', maxWidth: 700, width: '90%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header" style={{ padding: '20px 28px', borderBottom: '1px solid #edf2f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1315,15 +1496,138 @@ export function KnowledgeCentrePage({ currentProfile }) {
               <button className="btn-secondary" onClick={() => { setAnalysisPolicy(null); setAnalysis(null); setAnalysisError('') }}>
                 Close
               </button>
-              <button className="btn-primary" disabled={!analysis || analysisLoading}>
+              <button className="btn-primary" disabled={!analysis || analysisLoading} onClick={openCreateVersionModal}>
                 Create New Policy Version
               </button>
             </div>
           </div>
         </div>
       ) : null}
-        </>
-      )}
+
+      {showCreateVersionModal && analysisPolicy ? (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001 }} onClick={() => { if (!creatingVersion) setShowCreateVersionModal(false) }}>
+          <div className="modal-card large" style={{ position: 'relative', zIndex: 10002, background: 'white', borderRadius: 12, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', maxWidth: 880, width: '94%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header" style={{ padding: '20px 28px', borderBottom: '1px solid #edf2f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Create New Policy Version</h2>
+              <button className="modal-close" style={{ background: 'none', border: 'none', cursor: creatingVersion ? 'not-allowed' : 'pointer', padding: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7e8a' }} disabled={creatingVersion} onClick={() => setShowCreateVersionModal(false)}><X size={20} /></button>
+            </div>
+            <div style={{ padding: 24, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ border: '1px solid #dbe5ea', borderRadius: 10, padding: '12px 14px', background: '#f8fbfc', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <img src="/logo.png" alt="Future Focus" style={{ width: 120, height: 'auto', display: 'block' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <strong style={{ fontSize: 14, color: '#16303b' }}>Future Focus Policy Template</strong>
+                  <span style={{ fontSize: 12, color: '#4a5f6b' }}>Review current policy and feedback, then edit your replacement draft below.</span>
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: '#4a5f6b', lineHeight: 1.5 }}>
+                You are editing the next live version of <strong>{analysisPolicy.title}</strong>. Saving will publish the new version immediately, archive the current one, and reset review dates from your selected frequency.
+              </div>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 13, color: '#35505d', fontWeight: 600 }}>Review frequency (months)</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={newPolicyFrequency}
+                  onChange={e => {
+                    setNewPolicyFrequency(e.target.value)
+                    setTemplateApplied(false)
+                  }}
+                  disabled={creatingVersion}
+                  style={{ border: '1px solid #d8e3e9', borderRadius: 8, padding: '10px 12px', fontSize: 14 }}
+                />
+              </label>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 13, color: '#35505d', fontWeight: 600 }}>Current published policy (read-only)</span>
+                <textarea
+                  value={originalPolicyReference || 'No extracted policy text was found on this document.'}
+                  readOnly
+                  rows={10}
+                  style={{ width: '100%', border: '1px solid #d8e3e9', borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 1.5, fontFamily: 'inherit', background: '#f7fafb', color: '#304754', resize: 'vertical' }}
+                />
+              </label>
+
+              {analysis && (
+                <div style={{ border: '1px solid #e4ebef', borderRadius: 10, padding: 12, background: '#fff' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#173845', marginBottom: 8 }}>Feedback summary from analysis</div>
+                  {analysis.themes?.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#35505d', marginBottom: 4 }}>Key Themes</div>
+                      <ul style={{ margin: 0, paddingLeft: 18, color: '#334155', fontSize: 12, lineHeight: 1.5 }}>
+                        {analysis.themes.map((theme, idx) => <li key={idx}>{theme}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {analysis.suggestedChanges?.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#35505d', marginBottom: 4 }}>Suggested wording changes</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {analysis.suggestedChanges.map((change, idx) => (
+                          <div key={idx} style={{ background: '#f8fbfd', border: '1px solid #e6edf1', borderRadius: 8, padding: 8, fontSize: 12, color: '#334155' }}>
+                            {change.section ? <div style={{ color: '#64748b', marginBottom: 3 }}>Section: {change.section}</div> : null}
+                            <div><strong>Current:</strong> {change.original || '-'}</div>
+                            <div style={{ color: '#0f766e' }}><strong>Suggested:</strong> {change.suggested || '-'}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {analysis.leadershipSummary ? (
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#35505d', marginBottom: 4 }}>Leadership summary</div>
+                      <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.5 }}>{analysis.leadershipSummary}</div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: '#4a5f6b' }}>
+                  Edit your new version below. Use template only if you want to rewrite into sectioned format.
+                </span>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn-secondary" onClick={resetDraftToCurrentPolicy} disabled={creatingVersion || !originalPolicyReference}>
+                    Reset Draft to Current
+                  </button>
+                  <button type="button" className="btn-secondary" onClick={applyPolicyTemplate} disabled={creatingVersion}>
+                    {templateApplied ? 'Reapply Template' : 'Apply Template'}
+                  </button>
+                </div>
+              </div>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 13, color: '#35505d', fontWeight: 600 }}>New policy draft (editable)</span>
+                <textarea
+                  ref={policyContentRef}
+                  value={newPolicyContent}
+                  onChange={e => {
+                    setNewPolicyContent(e.target.value)
+                    setTemplateApplied(false)
+                  }}
+                  rows={18}
+                  disabled={creatingVersion}
+                  placeholder="Paste or edit the full policy content here"
+                  style={{ width: '100%', border: '1px solid #d8e3e9', borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical', minHeight: 280 }}
+                />
+              </label>
+              {createVersionError && (
+                <div className="form-error" style={{ display: 'flex', gap: 8 }}>
+                  <AlertCircle size={14} />{createVersionError}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '16px 28px', borderTop: '1px solid #edf2f5', display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button className="btn-secondary" onClick={() => setShowCreateVersionModal(false)} disabled={creatingVersion}>
+                Cancel
+              </button>
+              <button className="btn-primary" onClick={handleCreatePolicyVersion} disabled={creatingVersion}>
+                {creatingVersion ? 'Saving Version...' : 'Save & Replace Current Policy'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

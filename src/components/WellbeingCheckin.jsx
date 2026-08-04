@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import { Send } from 'lucide-react'
 import { getTodayCheckIn, submitCheckIn } from '../lib/wellbeingService.js'
-import { MoodFaces } from './MoodFaces.jsx'
+
+const MOOD_OPTIONS = {
+  very_sad: { en: 'Struggling', mi: 'He ra uaua', img: '/mood-faces/mood-very-sad.png', color: '#E8796B' },
+  sad: { en: 'Not great', mi: 'Kaore e pai', img: '/mood-faces/mood-sad.png', color: '#E8A76B' },
+  neutral: { en: 'Okay', mi: 'Ae, kei te pai', img: '/mood-faces/mood-neutral.png', color: '#F4D25C' },
+  happy: { en: 'Good', mi: 'Kei te pai!', img: '/mood-faces/mood-happy.png', color: '#A8D5BA' },
+  very_happy: { en: 'Great', mi: 'Tino pai!', img: '/mood-faces/mood-very-happy.png', color: '#7ECDC9' },
+}
 
 /**
  * Wellbeing Check-in Component
@@ -69,8 +76,12 @@ export default function WellbeingCheckin({ userId, centreName }) {
       setComment('')
     } catch (err) {
       console.error('Error submitting check-in:', err)
-      if (err.message.includes('duplicate')) {
+      if (err.message === 'duplicate_checkin' || err.message.includes('duplicate')) {
         setError('You have already checked in today. Check in again tomorrow!')
+      } else if (err.message === 'permission_denied') {
+        setError('Your account could not submit this check-in. Please contact support.')
+      } else if (err.message === 'missing_centre') {
+        setError('Could not find your centre on file. Please update your profile and try again.')
       } else {
         setError('Failed to submit check-in. Please try again.')
       }
@@ -87,11 +98,18 @@ export default function WellbeingCheckin({ userId, centreName }) {
   }
 
   if (todayCheckIn) {
+    const submittedMood = MOOD_OPTIONS[todayCheckIn.mood]
     return (
       <div className="wellbeing-checkin-success">
         <div style={{ textAlign: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>
-            {React.createElement(MoodFaces[todayCheckIn.mood], { selected: true, onClick: () => {} })}
+          <div style={{ marginBottom: 12 }}>
+            {submittedMood?.img ? (
+              <img
+                src={submittedMood.img}
+                alt={submittedMood.en}
+                style={{ width: 120, height: 120, objectFit: 'contain' }}
+              />
+            ) : null}
           </div>
           <div style={{ fontSize: 16, fontWeight: 600, color: '#15803d', marginBottom: 4 }}>Check-in Submitted!</div>
           <div style={{ fontSize: 13, color: '#6b7e8a' }}>
@@ -113,14 +131,7 @@ export default function WellbeingCheckin({ userId, centreName }) {
         <div className="wellbeing-checkin-faces">
           <div className="wellbeing-checkin-grid">
             {moods.map((mood) => {
-              const moodInfo = {
-                very_sad: { en: 'Struggling', mi: 'He ra uaua', img: '/mood-faces/mood-very-sad.png', color: '#E8796B' },
-                sad: { en: 'Not great', mi: 'Kāore e pai', img: '/mood-faces/mood-sad.png', color: '#E8A76B' },
-                neutral: { en: 'Okay', mi: 'Āe, kei te pai', img: '/mood-faces/mood-neutral.png', color: '#F4D25C' },
-                happy: { en: 'Good', mi: 'Kei te pai!', img: '/mood-faces/mood-happy.png', color: '#A8D5BA' },
-                very_happy: { en: 'Great', mi: 'Tino pai!', img: '/mood-faces/mood-very-happy.png', color: '#7ECDC9' },
-              }
-              const info = moodInfo[mood]
+              const info = MOOD_OPTIONS[mood]
               const isSelected = selectedMood === mood
               return (
                 <div key={mood} className="wellbeing-checkin-option">
@@ -164,7 +175,7 @@ export default function WellbeingCheckin({ userId, centreName }) {
             disabled={!selectedMood || submitting}
             className="wellbeing-checkin-submit"
             style={{
-              background: selectedMood ? 'linear-gradient(135deg, #1a6eb5, #0e9a8a)' : '#d1d5db',
+              background: 'linear-gradient(135deg, #1a6eb5, #0e9a8a)',
             }}
           >
             <Send size={14} />

@@ -158,7 +158,7 @@ export function AskFutureFocusPage({ currentProfile }) {
             <Send size={18} />
           </button>
         </form>
-        <div className="chat-input-hint">FF AI answers from published Knowledge Centre documents only.</div>
+        <div className="chat-input-hint">FF AI answers from published documents for staff. Super admins and policy admins can also search approved/draft documents.</div>
       </div>
     </div>
   )

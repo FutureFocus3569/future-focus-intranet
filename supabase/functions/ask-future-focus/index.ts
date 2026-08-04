@@ -37,14 +37,34 @@ serve(async (req) => {
       policies = data || []
     } catch (_) {}
 
-    // Search for published Knowledge Centre documents (new system) - ignore errors
+    // Resolve requester permission so we can scope searchable document statuses safely.
+    let requesterPermission = 'staff'
+    if (userId) {
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('permission')
+          .eq('id', userId)
+          .single()
+        requesterPermission = profile?.permission || 'staff'
+      } catch (_) {}
+    }
+
+    const canSearchNonPublished = requesterPermission === 'super_admin' || requesterPermission === 'policy_admin'
+    const allowedStatuses = canSearchNonPublished
+      ? ['published', 'approved', 'draft']
+      : ['published']
+
+    // Search Knowledge Centre documents (new system) - ignore errors
     let documents: any[] = []
     try {
       const { data } = await supabase
         .from('documents')
-        .select('id, title, extracted_text, category, document_type, licensing_criteria, storage_path')
-        .eq('status', 'published')
-        .limit(20)
+        .select('id, title, extracted_text, category, document_type, licensing_criteria, storage_path, status, created_at, is_current_version')
+        .in('status', allowedStatuses)
+        .eq('is_current_version', true)
+        .order('created_at', { ascending: false })
+        .limit(200)
       documents = (data || []).filter((d: any) => d.extracted_text && d.extracted_text.trim().length > 0)
     } catch (_) {}
 
@@ -72,7 +92,7 @@ serve(async (req) => {
       ? documents.map((d: any) => {
           const code = d.licensing_criteria ? ` (${d.licensing_criteria})` : ''
           const text = (d.extracted_text || '').slice(0, MAX_DOC_CHARS)
-          return `[DOC_ID:${d.id}] [${(d.category || 'DOCUMENT').toUpperCase()} - ${(d.document_type || 'POLICY').toUpperCase()}${code}] ${d.title}\n${text}`
+          return `[DOC_ID:${d.id}] [${(d.category || 'DOCUMENT').toUpperCase()} - ${(d.document_type || 'POLICY').toUpperCase()} - ${(d.status || 'published').toUpperCase()}${code}] ${d.title}\n${text}`
         }).join('\n\n---\n\n')
       : ''
 

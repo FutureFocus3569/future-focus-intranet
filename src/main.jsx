@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Home, Building2, Users, GraduationCap, FileText, ClipboardList, Sparkles,
@@ -9,25 +9,27 @@ import {
 import { supabase } from './lib/supabase.js';
 import { LoginPage } from './pages/Login.jsx';
 import { PasswordResetPage } from './pages/PasswordReset.jsx';
-import { StaffManagementPage } from './pages/StaffManagement.jsx';
-import { EventsPage } from './pages/EventsPage.jsx';
-import { WhatsHappeningPage } from './pages/WhatsHappening.jsx';
-import { AskFutureFocusPage } from './pages/AskFutureFocus.jsx';
-import { PoliciesAdminPage } from './pages/PoliciesAdmin.jsx';
-import { PoliciesForReviewPage } from './pages/PoliciesForReview.jsx';
-import { OurPeoplePage } from './pages/OurPeoplePage.jsx';
-import { KnowledgeCentrePage } from './pages/KnowledgeCentre.jsx';
-import { CentresPage } from './pages/CentresPage.jsx';
-import { CelebrationsPage } from './pages/CelebrationsPage.jsx';
-import { isDocumentVisibleForCentre, isPolicyOpenForFeedback } from './lib/policyReview.js';
+import { getPolicyReviewAlertState, isDocumentVisibleForCentre } from './lib/policyReview.js';
 import WellbeingCheckin from './components/WellbeingCheckin.jsx';
 import './styles.css';
+
+const StaffManagementPage = lazy(() => import('./pages/StaffManagement.jsx').then(m => ({ default: m.StaffManagementPage })));
+const EventsPage = lazy(() => import('./pages/EventsPage.jsx').then(m => ({ default: m.EventsPage })));
+const WhatsHappeningPage = lazy(() => import('./pages/WhatsHappening.jsx').then(m => ({ default: m.WhatsHappeningPage })));
+const AskFutureFocusPage = lazy(() => import('./pages/AskFutureFocus.jsx').then(m => ({ default: m.AskFutureFocusPage })));
+const PoliciesForReviewPage = lazy(() => import('./pages/PoliciesForReview.jsx').then(m => ({ default: m.PoliciesForReviewPage })));
+const OurPeoplePage = lazy(() => import('./pages/OurPeoplePage.jsx').then(m => ({ default: m.OurPeoplePage })));
+const KnowledgeCentrePage = lazy(() => import('./pages/KnowledgeCentre.jsx').then(m => ({ default: m.KnowledgeCentrePage })));
+const CentresPage = lazy(() => import('./pages/CentresPage.jsx').then(m => ({ default: m.CentresPage })));
+const CelebrationsPage = lazy(() => import('./pages/CelebrationsPage.jsx').then(m => ({ default: m.CelebrationsPage })));
+const AppraisalsPage = lazy(() => import('./pages/AppraisalsPage.jsx').then(m => ({ default: m.AppraisalsPage })));
 
 const navItems = [
   [Home, 'Home'],
   [CalendarDays, 'Calendar'],
   [Building2, 'Centres'],
   [Users, 'Our People'],
+  [HeartHandshake, 'Appraisals'],
   [GraduationCap, 'Learning'],
   [ClipboardList, 'Forms'],
   [Sparkles, 'FF AI'],
@@ -89,6 +91,19 @@ function getNextAnniversaryDate(startDate) {
   return next;
 }
 
+function getInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return 'FF'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase()
+}
+
+function normalizePhotoUrl(photoUrl) {
+  const value = String(photoUrl || '').trim()
+  if (!value || value === 'null' || value === 'undefined') return ''
+  return value
+}
+
 function buildBirthdayPeople(staffList) {
   return (staffList || [])
     .filter(person => person?.date_of_birth)
@@ -100,7 +115,7 @@ function buildBirthdayPeople(staffList) {
         id: person.id,
         name: fullName,
         dateLabel: nextBirthday.toLocaleDateString('en-NZ', { month: 'short', day: 'numeric' }),
-        photoUrl: person.photo_url || '/avatar-default.png',
+        photoUrl: normalizePhotoUrl(person.photo_url),
         sortDate: nextBirthday,
       };
     })
@@ -109,33 +124,49 @@ function buildBirthdayPeople(staffList) {
 }
 
 function buildAnniversaryPeople(staffList) {
-  const now = new Date();
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const oneMonthDays = 31;
+
   return (staffList || [])
     .filter(person => person?.start_date)
     .map(person => {
       const start = new Date(person.start_date);
       if (Number.isNaN(start.getTime())) return null;
 
-      const years = now.getFullYear() - start.getFullYear() - ((now.getMonth() < start.getMonth() || (now.getMonth() === start.getMonth() && now.getDate() < start.getDate())) ? 1 : 0);
-      if (years < 0) return null;
-
       const nextAnniversary = getNextAnniversaryDate(person.start_date);
+      if (!nextAnniversary) return null;
+
+      const milestoneYears = nextAnniversary.getFullYear() - start.getFullYear();
+      if (milestoneYears <= 0) return null;
+
+      const nextAnniversaryDay = new Date(nextAnniversary.getFullYear(), nextAnniversary.getMonth(), nextAnniversary.getDate());
+      const daysUntil = Math.ceil((nextAnniversaryDay.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24));
+
+      // Dashboard anniversaries only show those in the next month leading into their year mark.
+      if (daysUntil < 0 || daysUntil > oneMonthDays) return null;
+
       const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim() || 'Unknown Staff';
 
       return {
         id: person.id,
         name: fullName,
-        dateLabel: `${Math.max(0, years)} year${years === 1 ? '' : 's'}`,
-        photoUrl: person.photo_url || '/avatar-default.png',
-        sortDate: nextAnniversary || start,
+        dateLabel: `${milestoneYears} year${milestoneYears === 1 ? '' : 's'}`,
+        photoUrl: normalizePhotoUrl(person.photo_url),
+        sortDate: nextAnniversaryDay,
       };
     })
     .filter(Boolean)
     .sort((a, b) => a.sortDate - b.sortDate);
 }
 
-function toPanelRows(peopleList, limit = 2) {
-  return (peopleList || []).slice(0, limit).map(person => [person.name, person.dateLabel, person.photoUrl]);
+function toPanelRows(peopleList) {
+  return (peopleList || []).map(person => ({
+    id: person.id,
+    name: person.name,
+    dateLabel: person.dateLabel,
+    photoUrl: person.photoUrl,
+  }));
 }
 
 function Logo() {
@@ -223,6 +254,9 @@ function ProfileModal({ profile, onClose, onSaved }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [photoLoadError, setPhotoLoadError] = useState(false);
+  const [photoNotice, setPhotoNotice] = useState('');
+  const [photoError, setPhotoError] = useState('');
 
   useEffect(() => {
     async function loadEmail() {
@@ -232,21 +266,53 @@ function ProfileModal({ profile, onClose, onSaved }) {
     loadEmail();
   }, []);
 
+  useEffect(() => {
+    setPhotoLoadError(false);
+  }, [form.photo_url]);
+
   function set(field, value) { setForm(f => ({ ...f, [field]: value })); }
+
+  function normalizePhotoForStorage(value) {
+    if (!value || typeof value !== 'string') return null
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    try {
+      const url = new URL(trimmed)
+      url.searchParams.delete('v')
+      url.hash = ''
+      return url.toString()
+    } catch {
+      return trimmed
+    }
+  }
 
   async function handlePhotoUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!file.type || !file.type.startsWith('image/')) {
+      setPhotoError('Please choose an image file.');
+      return;
+    }
+
+    if (file.type === 'image/heic' || file.type === 'image/heif') {
+      setPhotoError('HEIC photos are not supported here yet. Please upload JPG, PNG, or WebP.');
+      e.target.value = '';
+      return;
+    }
     
     setUploading(true);
     setError('');
+    setPhotoError('');
+    setPhotoNotice('');
+    setSaved(false);
     
     try {
       // Generate unique filename
-      const ext = file.name.split('.').pop();
-      const filename = `${profile.id}-${Date.now()}.${ext}`;
+      const ext = file.name.split('.').pop() || 'jpg';
+      const filename = `profiles/${profile.id}-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
       
-      // Upload to storage
+      // Upload to the dedicated profile photos bucket.
       const { error: uploadError } = await supabase.storage
         .from('profile-photos')
         .upload(filename, file, { upsert: true });
@@ -255,12 +321,33 @@ function ProfileModal({ profile, onClose, onSaved }) {
       
       // Get public URL
       const { data } = supabase.storage.from('profile-photos').getPublicUrl(filename);
-      set('photo_url', data.publicUrl);
+      const storageUrl = normalizePhotoForStorage(data.publicUrl);
+      if (!storageUrl) throw new Error('Could not resolve uploaded photo URL.');
+
+      const uploadedUrl = `${storageUrl}?v=${Date.now()}`;
+      setPhotoLoadError(false);
+
+      // Persist immediately so users do not need to press Save just for photo changes.
+      const { error: profilePhotoError } = await supabase
+        .from('profiles')
+        .update({ photo_url: storageUrl })
+        .eq('id', profile.id);
+
+      set('photo_url', uploadedUrl);
+
+      if (profilePhotoError) {
+        setPhotoNotice('Photo uploaded but not saved to profile yet. Click Save Changes to keep it.');
+        setPhotoError(profilePhotoError.message || 'Could not save photo URL to your profile.');
+      } else {
+        onSaved({ photo_url: storageUrl });
+        setPhotoNotice('Photo uploaded and saved.');
+      }
     } catch (err) {
-      setError('Failed to upload photo: ' + err.message);
+      setPhotoError('Failed to upload photo: ' + err.message);
     }
     
     setUploading(false);
+    e.target.value = '';
   }
 
   async function handleSubmit(e) {
@@ -276,8 +363,10 @@ function ProfileModal({ profile, onClose, onSaved }) {
       
       // Update profile in database (exclude email - it's stored in auth only)
       const { email, ...profileData } = form;
+      const normalizedPhoto = normalizePhotoForStorage(profileData.photo_url)
       const payload = {
         ...profileData,
+        photo_url: normalizedPhoto,
         date_of_birth: normalizeDateForInput(profileData.date_of_birth) || null,
         start_date: normalizeDateForInput(profileData.start_date) || null,
       };
@@ -302,8 +391,14 @@ function ProfileModal({ profile, onClose, onSaved }) {
         <form onSubmit={handleSubmit} className="staff-form">
           <div className="photo-upload-section">
             <div className="photo-preview">
-              {form.photo_url ? (
-                <img src={form.photo_url} alt="Profile photo"/>
+              {form.photo_url && !photoLoadError ? (
+                <img
+                  src={form.photo_url}
+                  alt="Profile photo"
+                  loading="lazy"
+                  decoding="async"
+                  onError={() => setPhotoLoadError(true)}
+                />
               ) : (
                 <div className="photo-placeholder"><User size={48}/></div>
               )}
@@ -312,7 +407,7 @@ function ProfileModal({ profile, onClose, onSaved }) {
               <input 
                 type="file" 
                 id="photo-input"
-                accept="image/*" 
+                accept="image/jpeg,image/png,image/webp,image/gif,image/avif" 
                 onChange={handlePhotoUpload} 
                 disabled={uploading} 
                 style={{display: 'none'}}
@@ -320,6 +415,8 @@ function ProfileModal({ profile, onClose, onSaved }) {
               <label htmlFor="photo-input" className="btn-secondary" style={{cursor: 'pointer', textAlign: 'center', display: 'block'}}>
                 {uploading ? 'Uploading…' : 'Upload Photo'}
               </label>
+              {photoNotice && <div className="form-success" style={{marginTop: 8}}>{photoNotice}</div>}
+              {photoError && <div className="form-error" style={{marginTop: 8}}>{photoError}</div>}
             </div>
           </div>
 
@@ -405,7 +502,7 @@ function NewsPanel() {
     <span className="coming-soon">Coming Soon!</span>
     <div className="news-grid">
       {news.map(n => <article className="news-card" key={n.title}>
-        <img src={n.image}/><small>{n.date}</small><h3>{n.title}</h3><p>{n.text}</p><button>Read more <ChevronRight size={14}/></button>
+        <img src={n.image} alt={n.title} loading="lazy" decoding="async"/><small>{n.date}</small><h3>{n.title}</h3><p>{n.text}</p><button>Read more <ChevronRight size={14}/></button>
       </article>)}
     </div>
   </section>
@@ -444,7 +541,7 @@ function QuickActions({ onNavigate, openReviewCount }) {
     <div className="actions-grid">
       {actions.map(([Icon,label]) => <button key={label} onClick={() => onNavigate?.(label)}><span><Icon size={19}/></span><small>{label}</small></button>)}
       <button className="quick-action-review" onClick={() => onNavigate?.('Policies for Review')}>
-        <span style={{ position: 'relative', display: 'inline-flex' }}><FileText size={19} />{openReviewCount > 0 && <span className="review-badge">{openReviewCount}</span>}</span>
+        <span style={{ position: 'relative' }}><FileText size={19} />{openReviewCount > 0 && <span className="review-badge">{openReviewCount}</span>}</span>
         <small>Policies for Review</small>
       </button>
     </div>
@@ -469,11 +566,47 @@ function WellbeingSection({ userId, centreName }) {
   )
 }
 
+function RouteLoading() {
+  return <div className="auth-loading" style={{ height: '30vh' }}><p>Loading…</p></div>
+}
+
 function PeoplePanel({title, rows = [], anniversary=false, onViewAll}) {
+  const visibleCount = 4
   const safeRows = rows && Array.isArray(rows) ? rows : [];
-  const moreCount = Math.max(0, safeRows.length - 2);
+  const moreCount = Math.max(0, safeRows.length - visibleCount);
+  const [brokenPhotoKeys, setBrokenPhotoKeys] = useState(new Set());
   return <section className="panel people-panel"><SectionHeader title={title} onViewAll={onViewAll}/>
-    {safeRows.slice(0, 2).map(([name,date,img])=><div className="person-row" key={name}><img src={img} alt={name}/><div><strong>{name}</strong><span>{date}</span></div>{anniversary ? <Trophy size={18}/> : <PartyPopper size={18}/>}</div>)}
+    {safeRows.slice(0, visibleCount).map((person)=>{
+      const key = person.id || person.name
+      const showPhoto = Boolean(person.photoUrl) && !brokenPhotoKeys.has(key)
+
+      return (
+        <div className="person-row" key={key}>
+          {showPhoto ? (
+            <img
+              className="person-avatar"
+              src={person.photoUrl}
+              alt={person.name}
+              loading="lazy"
+              decoding="async"
+              onError={() => {
+                setBrokenPhotoKeys(prev => {
+                  const next = new Set(prev)
+                  next.add(key)
+                  return next
+                })
+              }}
+            />
+          ) : (
+            <div className="person-avatar person-avatar-fallback">{getInitials(person.name)}</div>
+          )}
+          <div className="person-info"><strong>{person.name}</strong><span>{person.dateLabel}</span></div>
+          <span className={`people-celebration-icon ${anniversary ? 'anniversary' : 'birthday'}`} aria-hidden="true">
+            {anniversary ? <Trophy size={15}/> : <PartyPopper size={15}/>}
+          </span>
+        </div>
+      )
+    })}
     {safeRows.length === 0 && <p style={{color:'#8fa3ad',fontSize:13,padding:'8px 0'}}>No staff records available yet.</p>}
     {moreCount > 0 && <button className="more-link" onClick={onViewAll}>{moreCount} more {anniversary ? 'this year' : 'coming up'} <ChevronRight size={13}/></button>}
   </section>
@@ -493,6 +626,7 @@ function App(){
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [page, setPage] = useState('Home');
   const [showProfile, setShowProfile] = useState(false);
+  const [appraisalFocusStaffId, setAppraisalFocusStaffId] = useState(null);
   const [staffDirectory, setStaffDirectory] = useState([]);
   const [birthdayPeople, setBirthdayPeople] = useState([]);
   const [anniversaryPeople, setAnniversaryPeople] = useState([]);
@@ -507,9 +641,12 @@ function App(){
     const authType = searchParams.get('type') || hashParams.get('type');
     const hasAccessToken = hashParams.has('access_token');
     const hasAuthCode = searchParams.has('code');
+    const hasTokenHash = searchParams.has('token_hash') || hashParams.has('token_hash');
     const isInviteOrRecovery = authType === 'invite' || authType === 'recovery' || authType === 'signup';
 
-    if (hasAccessToken || hasAuthCode || isInviteOrRecovery) {
+    // Route to password setup UI for explicit invite/recovery/signup links.
+    // Some mail clients strip or delay auth fragments; do not require token evidence here.
+    if (isInviteOrRecovery || hasAccessToken || hasAuthCode || hasTokenHash) {
       setIsPasswordReset(true);
       // Avoid infinite loading state when arriving from invite/reset links.
       setSession(null);
@@ -591,13 +728,13 @@ function App(){
     try {
       const { data } = await supabase
         .from('documents')
-        .select('id, review_feedback_opens_at, review_feedback_closes_at, is_current_version, status, is_centre_specific, centre_scope')
+        .select('id, review_feedback_opens_at, review_feedback_closes_at, next_review_date, document_type, parent_document_id, is_current_version, status, is_centre_specific, centre_scope')
         .eq('status', 'published')
         .eq('is_current_version', true)
 
       const visibleCount = (data || []).filter(doc => {
-        if (!isPolicyOpenForFeedback(doc)) return false
-        return isDocumentVisibleForCentre(doc, profile?.centre)
+        if (getPolicyReviewAlertState(doc) === 'none') return false
+        return isDocumentVisibleForCentre(doc, profile?.centre, profile?.permission)
       }).length
 
       setOpenReviewCount(visibleCount)
@@ -613,6 +750,19 @@ function App(){
   async function handleSignOut() {
     await supabase.auth.signOut();
     setPage('Home');
+  }
+
+  function openAppraisalForStaff(staffId) {
+    setAppraisalFocusStaffId(staffId || null)
+    setPage('Appraisals')
+    setSidebarOpen(false)
+  }
+
+  function navigateToPage(nextPage) {
+    if (nextPage !== 'Appraisals') {
+      setAppraisalFocusStaffId(null)
+    }
+    setPage(nextPage)
   }
 
   // Password reset flow
@@ -631,23 +781,26 @@ function App(){
 
   return <div className="app-shell">
     <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)}
-      page={page} setPage={setPage} canManageStaff={canManageStaff} profile={profile} />
+    page={page} setPage={navigateToPage} canManageStaff={canManageStaff} profile={profile} />
     <main className="main-area">
       <Header onMenuClick={() => setSidebarOpen(true)} profile={profile} onSignOut={handleSignOut} onProfileClick={() => setShowProfile(true)} />
       {showProfile && <ProfileModal profile={profile} onClose={() => setShowProfile(false)} onSaved={updates => setProfile(p => ({ ...p, ...updates }))} />}
       <div className="page-content">
+        <Suspense fallback={<RouteLoading />}>
         {page === 'Staff' && canManageStaff ? (
           <StaffManagementPage currentProfile={profile} />
         ) : page === 'Centres' && canViewCentres ? (
-          <CentresPage currentProfile={profile} />
+          <CentresPage currentProfile={profile} onOpenAppraisal={openAppraisalForStaff} />
         ) : page === 'Calendar' ? (
           <EventsPage currentProfile={profile} />
         ) : page === 'Our People' ? (
-          <OurPeoplePage currentProfile={profile} />
+          <OurPeoplePage currentProfile={profile} onOpenAppraisal={openAppraisalForStaff} />
+        ) : page === 'Appraisals' ? (
+          <AppraisalsPage currentProfile={profile} focusStaffId={appraisalFocusStaffId} onClearFocus={() => setAppraisalFocusStaffId(null)} />
         ) : page === 'Birthdays' ? (
-          <CelebrationsPage currentProfile={profile} type="birthdays" staff={staffDirectory} onBack={() => setPage('Home')} />
+          <CelebrationsPage currentProfile={profile} type="birthdays" staff={staffDirectory} onBack={() => navigateToPage('Home')} />
         ) : page === 'Anniversaries' ? (
-          <CelebrationsPage currentProfile={profile} type="anniversaries" staff={staffDirectory} onBack={() => setPage('Home')} />
+          <CelebrationsPage currentProfile={profile} type="anniversaries" staff={staffDirectory} onBack={() => navigateToPage('Home')} />
         ) : page === "What's Happening" ? (
           <WhatsHappeningPage currentProfile={profile} />
         ) : page === 'FF AI' ? (
@@ -659,17 +812,18 @@ function App(){
         ) : (
           <>
             <Hero profile={profile} />
-            <section className="feature-grid">{topCards.map(item=><TopCard key={item.title} item={item} onNavigate={setPage}/>)}</section>
-            <section className="mid-grid"><NewsPanel/><EventsPanel onViewAll={() => setPage('Calendar')}/><QuickActions onNavigate={setPage} openReviewCount={openReviewCount}/></section>
-            <section className="bottom-grid"><CentreSnapshot /><PeoplePanel title="Birthdays" rows={toPanelRows(birthdayPeople)} onViewAll={() => setPage('Birthdays')} /><PeoplePanel title="Anniversaries" rows={toPanelRows(anniversaryPeople)} anniversary onViewAll={() => setPage('Anniversaries')} /><Resources/></section>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr .95fr .95fr 1.2fr', gap: 16, marginTop: 16, marginBottom: 16 }}>
-              <div style={{ gridColumn: 'span 2' }}>
+            <section className="feature-grid">{topCards.map(item=><TopCard key={item.title} item={item} onNavigate={navigateToPage}/>)}</section>
+            <section className="mid-grid"><NewsPanel/><EventsPanel onViewAll={() => navigateToPage('Calendar')}/><QuickActions onNavigate={navigateToPage} openReviewCount={openReviewCount}/></section>
+            <section className="bottom-grid"><CentreSnapshot /><PeoplePanel title="Birthdays" rows={toPanelRows(birthdayPeople)} onViewAll={() => navigateToPage('Birthdays')} /><PeoplePanel title="Anniversaries" rows={toPanelRows(anniversaryPeople)} anniversary onViewAll={() => navigateToPage('Anniversaries')} /><Resources/></section>
+            <div className="wellbeing-home-grid">
+              <div className="wellbeing-home-item">
                 <WellbeingSection userId={profile?.id} centreName={profile?.centre} />
               </div>
             </div>
             <footer><span>GOOD PEOPLE. <b>CURIOUS MINDS.</b> ONE FUTURE FOCUS.</span></footer>
           </>
         )}
+        </Suspense>
       </div>
     </main>
   </div>

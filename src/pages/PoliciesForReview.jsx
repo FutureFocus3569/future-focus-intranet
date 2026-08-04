@@ -3,7 +3,7 @@ import { Eye, FileText, Search, ExternalLink, AlertCircle, Clock3, X } from 'luc
 import { supabase } from '../lib/supabase.js'
 import { getSignedUrl } from '../lib/documentService.js'
 import { DOCUMENT_CATEGORIES } from '../lib/documentTypes.js'
-import { isDocumentVisibleForCentre, isPolicyOpenForFeedback } from '../lib/policyReview.js'
+import { getPolicyFeedbackWindow, getPolicyReviewAlertState, isDocumentVisibleForCentre } from '../lib/policyReview.js'
 
 function formatDate(value) {
   if (!value) return '—'
@@ -18,6 +18,20 @@ function getDaysRemaining(closingDate) {
   const close = new Date(closingDate)
   const diff = Math.ceil((close - today) / (1000 * 60 * 60 * 24))
   return diff
+}
+
+function getReviewStateMeta(state) {
+  if (state === 'open') return { label: 'Open now', color: '#0e9a8a', bg: '#e6f5f2' }
+  if (state === 'upcoming') return { label: 'Upcoming', color: '#1a6eb5', bg: '#e6eff9' }
+  if (state === 'overdue') return { label: 'Overdue', color: '#dc2626', bg: '#fee2e2' }
+  return { label: 'No alert', color: '#6b7e8a', bg: '#eef2f6' }
+}
+
+function getFeedbackStatusLabel(status) {
+  if (status === 'reviewed') return 'Reviewed (no feedback)'
+  if (status === 'submitted') return 'Submitted'
+  if (!status || status === 'not_submitted') return 'Not submitted'
+  return status
 }
 
 export function PoliciesForReviewPage({ currentProfile }) {
@@ -35,6 +49,7 @@ export function PoliciesForReviewPage({ currentProfile }) {
     suggested_wording: '',
     works_in_practice: true,
     visibility: 'private_to_admins',
+    no_feedback_to_provide: false,
   })
   const [submittingFeedback, setSubmittingFeedback] = useState(false)
 
@@ -57,11 +72,26 @@ export function PoliciesForReviewPage({ currentProfile }) {
 
       if (docsError) throw docsError
 
-      const visiblePolicies = (data || []).filter(doc => {
-        if (!doc.review_feedback_opens_at && !doc.review_feedback_closes_at && !doc.next_review_date) return false
-        if (!isPolicyOpenForFeedback(doc)) return false
-        return isDocumentVisibleForCentre(doc, currentProfile?.centre)
-      })
+      const visiblePolicies = (data || [])
+        .filter(doc => isDocumentVisibleForCentre(doc, currentProfile?.centre, currentProfile?.permission))
+        .map(doc => {
+          const window = getPolicyFeedbackWindow(doc)
+          const reviewAlertState = getPolicyReviewAlertState(doc)
+          return {
+            ...doc,
+            review_alert_state: reviewAlertState,
+            review_feedback_opens_effective: window.opensAt,
+            review_feedback_closes_effective: window.closesAt,
+            review_due_effective: window.dueAt,
+          }
+        })
+        .filter(doc => doc.review_alert_state !== 'none')
+        .sort((a, b) => {
+          const priority = { overdue: 0, open: 1, upcoming: 2 }
+          const stateDiff = (priority[a.review_alert_state] ?? 9) - (priority[b.review_alert_state] ?? 9)
+          if (stateDiff !== 0) return stateDiff
+          return String(a.review_feedback_closes_effective || '').localeCompare(String(b.review_feedback_closes_effective || ''))
+        })
 
       const ownerIds = [...new Set(visiblePolicies.map(doc => doc.policy_owner_id || doc.owner_id).filter(Boolean))]
       let profileMap = {}
@@ -114,6 +144,7 @@ export function PoliciesForReviewPage({ currentProfile }) {
       suggested_wording: '',
       works_in_practice: true,
       visibility: 'private_to_admins',
+      no_feedback_to_provide: false,
     })
     setError('')
   }
@@ -141,15 +172,22 @@ export function PoliciesForReviewPage({ currentProfile }) {
 
       if (lookupError) throw lookupError
 
+      const reviewedWithoutFeedback = Boolean(feedbackForm.no_feedback_to_provide)
+      const trimmedFeedback = feedbackForm.feedback.trim()
+
+      if (!reviewedWithoutFeedback && !trimmedFeedback) {
+        throw new Error('Provide feedback or choose "Reviewed, no feedback to provide".')
+      }
+
       const payload = {
         document_id: selectedDoc.id,
         user_id: currentProfile.id,
-        section_reference: feedbackForm.section_reference || null,
-        feedback: feedbackForm.feedback.trim(),
-        suggested_wording: feedbackForm.suggested_wording.trim() || null,
-        works_in_practice: feedbackForm.works_in_practice,
+        section_reference: reviewedWithoutFeedback ? null : (feedbackForm.section_reference || null),
+        feedback: reviewedWithoutFeedback ? 'Reviewed, no feedback to provide.' : trimmedFeedback,
+        suggested_wording: reviewedWithoutFeedback ? null : (feedbackForm.suggested_wording.trim() || null),
+        works_in_practice: reviewedWithoutFeedback ? null : feedbackForm.works_in_practice,
         visibility: feedbackForm.visibility,
-        status: 'submitted',
+        status: reviewedWithoutFeedback ? 'reviewed' : 'submitted',
       }
 
       if (existingRows?.length) {
@@ -183,6 +221,14 @@ export function PoliciesForReviewPage({ currentProfile }) {
     })
   }, [policies, searchQuery, categoryFilter])
 
+  const reviewAlertSummary = useMemo(() => {
+    const summary = { open: 0, upcoming: 0, overdue: 0 }
+    policies.forEach((doc) => {
+      if (summary[doc.review_alert_state] !== undefined) summary[doc.review_alert_state] += 1
+    })
+    return summary
+  }, [policies])
+
   return (
     <div className="review-page">
       <div className="review-header">
@@ -190,7 +236,13 @@ export function PoliciesForReviewPage({ currentProfile }) {
           <h1>Policies for Review</h1>
           <p>Review current published policies and provide feedback while the review window is open.</p>
         </div>
-        <div className="review-count-pill">{policies.length} open</div>
+        <div className="review-count-pill">{policies.length} alerts</div>
+      </div>
+
+      <div className="review-toolbar" style={{ marginBottom: 10 }}>
+        <span className="review-chip review-chip-accent">Open now: {reviewAlertSummary.open}</span>
+        <span className="review-chip">Upcoming: {reviewAlertSummary.upcoming}</span>
+        <span className="review-chip" style={{ background: '#fee2e2', color: '#dc2626' }}>Overdue: {reviewAlertSummary.overdue}</span>
       </div>
 
       <div className="review-toolbar">
@@ -219,16 +271,18 @@ export function PoliciesForReviewPage({ currentProfile }) {
       ) : filteredPolicies.length === 0 ? (
         <div className="review-empty">
           <FileText size={36} style={{ color: '#c8d8e0', marginBottom: 12 }} />
-          <strong>No policies currently open for feedback</strong>
-          <small>New review windows will appear here when they open.</small>
+          <strong>No review alerts for your centre</strong>
+          <small>Upcoming, open, and overdue review items will appear here.</small>
         </div>
       ) : (
         <div className="review-list">
           {filteredPolicies.map(doc => {
             const categoryLabel = DOCUMENT_CATEGORIES.find(item => item.value === doc.category)?.label || doc.category
-            const remainingDays = getDaysRemaining(doc.review_feedback_closes_at)
+            const remainingDays = getDaysRemaining(doc.review_due_effective)
             const feedbackState = feedbackStatusMap[doc.id] || 'not_submitted'
             const ownerName = doc.policy_owner_id ? ownerProfiles[doc.policy_owner_id] || 'Assigned owner' : '—'
+            const reviewStateMeta = getReviewStateMeta(doc.review_alert_state)
+            const canSubmitFeedback = doc.review_alert_state === 'open' || doc.review_alert_state === 'overdue'
             return (
               <article key={doc.id} className="review-card">
                 <div className="review-card-main">
@@ -240,6 +294,7 @@ export function PoliciesForReviewPage({ currentProfile }) {
                     <div className="review-card-badges">
                       <span className="review-chip">{categoryLabel}</span>
                       <span className="review-chip review-chip-accent">v{doc.version || '1.0'}</span>
+                      <span className="review-chip" style={{ background: reviewStateMeta.bg, color: reviewStateMeta.color }}>{reviewStateMeta.label}</span>
                     </div>
                   </div>
                   <div className="review-meta-grid">
@@ -256,26 +311,26 @@ export function PoliciesForReviewPage({ currentProfile }) {
                       <strong>{formatDate(doc.next_review_date)}</strong>
                     </div>
                     <div>
-                      <span className="review-meta-label">Feedback closes</span>
-                      <strong>{formatDate(doc.review_feedback_closes_at)}</strong>
+                      <span className="review-meta-label">Review due</span>
+                      <strong>{formatDate(doc.review_due_effective)}</strong>
                     </div>
                   </div>
                 </div>
                 <div className="review-card-side">
                   <div className="review-side-row">
                     <Clock3 size={14} />
-                    <span>{remainingDays === null ? 'Open' : remainingDays >= 0 ? `${remainingDays} day${remainingDays === 1 ? '' : 's'} left` : 'Closed'}</span>
+                    <span>{remainingDays === null ? reviewStateMeta.label : remainingDays >= 0 ? `${remainingDays} day${remainingDays === 1 ? '' : 's'} left` : `${Math.abs(remainingDays)} day${Math.abs(remainingDays) === 1 ? '' : 's'} overdue`}</span>
                   </div>
                   <div className="review-side-row">
                     <span>Your feedback</span>
-                    <strong>{feedbackState === 'not_submitted' ? 'Not submitted' : feedbackState}</strong>
+                    <strong>{getFeedbackStatusLabel(feedbackState)}</strong>
                   </div>
                   <div className="review-actions">
                     <button className="btn-secondary" onClick={() => handleView(doc)}>
                       <Eye size={14} /> View Policy
                     </button>
-                    <button className="btn-primary" onClick={() => openFeedbackModal(doc)}>
-                      <ExternalLink size={14} /> Provide Feedback
+                    <button className={canSubmitFeedback ? 'btn-primary' : 'btn-secondary'} onClick={() => canSubmitFeedback && openFeedbackModal(doc)} disabled={!canSubmitFeedback}>
+                      <ExternalLink size={14} /> {canSubmitFeedback ? 'Provide Feedback' : 'Feedback not open yet'}
                     </button>
                   </div>
                 </div>
@@ -306,7 +361,8 @@ export function PoliciesForReviewPage({ currentProfile }) {
                   value={feedbackForm.feedback}
                   onChange={e => setFeedbackForm({ ...feedbackForm, feedback: e.target.value })}
                   rows={5}
-                  required
+                  required={!feedbackForm.no_feedback_to_provide}
+                  disabled={feedbackForm.no_feedback_to_provide}
                   placeholder="Share what works, what needs clarification, or any concerns."
                   style={{ fontFamily: 'inherit' }}
                 />
@@ -317,9 +373,19 @@ export function PoliciesForReviewPage({ currentProfile }) {
                   value={feedbackForm.suggested_wording}
                   onChange={e => setFeedbackForm({ ...feedbackForm, suggested_wording: e.target.value })}
                   rows={4}
+                  disabled={feedbackForm.no_feedback_to_provide}
                   placeholder="Optional wording that could improve the policy."
                   style={{ fontFamily: 'inherit' }}
                 />
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={feedbackForm.no_feedback_to_provide}
+                  onChange={e => setFeedbackForm({ ...feedbackForm, no_feedback_to_provide: e.target.checked })}
+                />
+                Reviewed, no feedback to provide
               </label>
 
               <div className="form-row">
@@ -328,6 +394,7 @@ export function PoliciesForReviewPage({ currentProfile }) {
                     type="checkbox"
                     checked={feedbackForm.works_in_practice}
                     onChange={e => setFeedbackForm({ ...feedbackForm, works_in_practice: e.target.checked })}
+                    disabled={feedbackForm.no_feedback_to_provide}
                   />
                   This works in practice
                 </label>

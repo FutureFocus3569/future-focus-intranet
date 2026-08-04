@@ -153,7 +153,7 @@ function TrendChart({ centreSeries, orgSeries }) {
   )
 }
 
-export function CentresPage({ currentProfile }) {
+export function CentresPage({ currentProfile, onOpenAppraisal }) {
   const isSuperAdmin = currentProfile?.permission === 'super_admin'
   const isCentreLeader = currentProfile?.permission === 'centre_leader'
   const canAccess = isSuperAdmin || isCentreLeader
@@ -170,6 +170,7 @@ export function CentresPage({ currentProfile }) {
   const [orgTrend, setOrgTrend] = useState([])
   const [followupsByCheckinId, setFollowupsByCheckinId] = useState({})
   const [urgentCheckins, setUrgentCheckins] = useState([])
+  const [appraisalRows, setAppraisalRows] = useState([])
   const [followupsSupported, setFollowupsSupported] = useState(true)
   const [savingFollowupId, setSavingFollowupId] = useState(null)
 
@@ -184,6 +185,11 @@ export function CentresPage({ currentProfile }) {
     loadCentreData(activeCentre)
   }, [canAccess, activeCentre])
 
+  useEffect(() => {
+    if (!canAccess || !activeCentre) return
+    loadAppraisalSummary(activeCentre)
+  }, [canAccess, activeCentre])
+
   async function loadCentreData(centreName) {
     setLoading(true)
     setError('')
@@ -193,11 +199,11 @@ export function CentresPage({ currentProfile }) {
       const thirtyDaysAgo = getStartDate(30)
 
       const [profilesRes, postsRes, checkinsRes] = await Promise.all([
-        supabase.from('profiles').select('id, centre'),
+        supabase.from('profiles').select('id, centre, first_name, last_name'),
         supabase.from('posts').select('id, centre, created_at').gte('created_at', thirtyDaysAgo),
         supabase
           .from('wellbeing_checkins')
-          .select('id, user_id, mood, comment, centre_name, created_at, profiles:user_id(first_name,last_name)')
+          .select('id, user_id, mood, comment, centre_name, created_at')
           .gte('created_at', ninetyDaysAgo),
       ])
 
@@ -208,12 +214,18 @@ export function CentresPage({ currentProfile }) {
       const profiles = profilesRes.data || []
       const posts = postsRes.data || []
       const checkins = checkinsRes.data || []
+      const profileByUserId = Object.fromEntries(
+        profiles
+          .filter((profile) => profile?.id)
+          .map((profile) => [profile.id, profile])
+      )
 
       const staff = profiles.filter((p) => p.centre === centreName)
       const recentUpdates = posts.filter((p) => p.centre === centreName || p.centre === null)
       const centreCheckins = checkins.filter((c) => c.centre_name === centreName)
       const urgent = centreCheckins
         .filter((c) => c.mood === 'sad' || c.mood === 'very_sad')
+        .map((c) => ({ ...c, profile: profileByUserId[c.user_id] || null }))
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
         .slice(0, 30)
 
@@ -252,6 +264,47 @@ export function CentresPage({ currentProfile }) {
     }
 
     setLoading(false)
+  }
+
+  async function loadAppraisalSummary(centreName) {
+    try {
+      const { data: staffMembers, error: staffError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, centre')
+        .eq('centre', centreName)
+
+      if (staffError) {
+        console.error('Failed to load centre staff for appraisals:', staffError)
+        setAppraisalRows([])
+        return
+      }
+
+      const staffIds = (staffMembers || []).map((person) => person.id).filter(Boolean)
+      if (!staffIds.length) {
+        setAppraisalRows([])
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('appraisal_cycles')
+        .select('id, staff_id, status, period_start, period_end, created_at, template:appraisal_templates(title), staff:profiles!appraisal_cycles_staff_id_fkey(first_name,last_name)')
+        .in('staff_id', staffIds)
+
+      if (error) {
+        console.error('Failed to load centre appraisal summary:', error)
+        setAppraisalRows([])
+        return
+      }
+
+      setAppraisalRows((data || []).map((cycle) => ({
+        ...cycle,
+        template: Array.isArray(cycle.template) ? cycle.template[0] : cycle.template,
+        staff: Array.isArray(cycle.staff) ? cycle.staff[0] : cycle.staff,
+      })))
+    } catch (err) {
+      console.error('Centre appraisal summary error:', err)
+      setAppraisalRows([])
+    }
   }
 
   const selectedLabel = useMemo(() => activeCentre || 'Your Centre', [activeCentre])
@@ -341,6 +394,35 @@ export function CentresPage({ currentProfile }) {
           </section>
 
           <section className="centre-modules-grid">
+            <article className="centre-module centre-appraisal-module">
+              <div className="centre-module-header">
+                <h3>Appraisal Status</h3>
+                <small>Active and recent cycles</small>
+              </div>
+              {appraisalRows.length === 0 ? (
+                <p>No appraisal cycles found for this centre yet.</p>
+              ) : (
+                <div className="appraisal-status-grid">
+                  {appraisalRows.map((cycle) => {
+                    const staffName = `${cycle.staff?.first_name || ''} ${cycle.staff?.last_name || ''}`.trim() || 'Unknown staff member'
+                    return (
+                      <button
+                        key={cycle.id}
+                        type="button"
+                        className="appraisal-status-item"
+                        onClick={() => onOpenAppraisal?.(cycle.staff_id)}
+                      >
+                        <strong>{staffName}</strong>
+                        <span>{cycle.template?.title || 'Appraisal template'}</span>
+                        <span>{cycle.status}</span>
+                        <span>{cycle.period_start} to {cycle.period_end}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </article>
+
             <article className="centre-module wellbeing-module">
               <div className="centre-module-header">
                 <h3>Wellbeing Trend Snapshot</h3>
@@ -386,7 +468,7 @@ export function CentresPage({ currentProfile }) {
                 <div className="followup-list">
                   {urgentCheckins.slice(0, 12).map((checkin) => {
                     const status = followupsByCheckinId[checkin.id]?.status || 'open'
-                    const fullName = `${checkin.profiles?.first_name || ''} ${checkin.profiles?.last_name || ''}`.trim() || 'Unknown staff member'
+                    const fullName = `${checkin.profile?.first_name || ''} ${checkin.profile?.last_name || ''}`.trim() || 'Unknown staff member'
                     return (
                       <article key={checkin.id} className="followup-item">
                         <div className="followup-item-header">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase, CENTRES } from '../lib/supabase.js'
-import { Plus, Trash2, X, Megaphone, PartyPopper, BookOpen, Bell, Edit2, Image, Paperclip, FileText, ThumbsUp } from 'lucide-react'
+import { Plus, Trash2, X, Megaphone, PartyPopper, BookOpen, Bell, Edit2, Image, Paperclip, FileText, ThumbsUp, MessageCircle, Flame } from 'lucide-react'
 
 const CATEGORIES = [
   { value: 'update',      label: 'Leadership Update', colour: '#005866', bg: '#eaf7f7', Icon: Megaphone },
@@ -236,7 +236,7 @@ function PostModal({ onClose, onSaved, callerProfile, editing }) {
             <div className="post-image-previews">
               {form.images.map(url => (
                 <div key={url} className="post-image-thumb">
-                  <img src={url} alt=""/>
+                  <img src={url} alt="" loading="lazy" decoding="async"/>
                   <button type="button" className="post-image-remove" onClick={() => removeImage(url)}><X size={12}/></button>
                 </div>
               ))}
@@ -284,7 +284,7 @@ function PostModal({ onClose, onSaved, callerProfile, editing }) {
   )
 }
 
-function PostReadModal({ post, onClose }) {
+function PostReadModal({ post, onClose, comments = [], commentDraft = '', onCommentDraftChange, onSubmitComment, commentSubmitting = false, commentError = '' }) {
   if (!post) return null
   const centreName = post.centre || 'All Centres'
   const attachments = getAttachmentsFromPost(post)
@@ -300,9 +300,9 @@ function PostReadModal({ post, onClose }) {
           <div className="post-read-meta">{centreName} • {timeAgo(post.created_at)}</div>
           <p className="post-read-body">{post.body}</p>
           {post.images && post.images.length > 0 && (
-            <div className={`post-read-images post-images-${post.images.length}`}>
+            <div className="post-read-images">
               {post.images.map((url, index) => (
-                <img key={`${post.id}-read-image-${index}`} src={url} alt={`Image ${index + 1}`} />
+                <img key={`${post.id}-read-image-${index}`} src={url} alt={`Image ${index + 1}`} loading="lazy" decoding="async" />
               ))}
             </div>
           )}
@@ -322,6 +322,42 @@ function PostReadModal({ post, onClose }) {
               ))}
             </div>
           )}
+
+          <div className="post-comments-section">
+            <h4 className="post-comments-title"><MessageCircle size={15}/> Comments ({comments.length})</h4>
+            <form className="post-comment-form" onSubmit={(e) => { e.preventDefault(); onSubmitComment?.() }}>
+              <textarea
+                value={commentDraft}
+                onChange={(e) => onCommentDraftChange?.(e.target.value)}
+                placeholder="Write a comment..."
+                rows={3}
+                maxLength={1000}
+              />
+              {commentError && <div className="post-comment-error">{commentError}</div>}
+              <button type="submit" className="btn-primary" disabled={commentSubmitting || !commentDraft.trim()}>
+                {commentSubmitting ? 'Posting...' : 'Post Comment'}
+              </button>
+            </form>
+
+            {comments.length === 0 ? (
+              <p className="post-comments-empty">No comments yet. Be the first to comment.</p>
+            ) : (
+              <div className="post-comments-list">
+                {comments.map(comment => {
+                  const authorName = `${comment?.author?.first_name || ''} ${comment?.author?.last_name || ''}`.trim() || 'Team Member'
+                  return (
+                    <article key={comment.id} className="post-comment-item">
+                      <div className="post-comment-meta">
+                        <strong>{authorName}</strong>
+                        <span>{timeAgo(comment.created_at)}</span>
+                      </div>
+                      <p>{comment.comment}</p>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -339,6 +375,10 @@ function timeAgo(dateStr) {
 
 export function WhatsHappeningPage({ currentProfile }) {
   const [posts, setPosts] = useState([])
+  const [commentsByPost, setCommentsByPost] = useState({})
+  const [commentDraftByPost, setCommentDraftByPost] = useState({})
+  const [commentErrorByPost, setCommentErrorByPost] = useState({})
+  const [commentingPostId, setCommentingPostId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [centreFilter, setCentreFilter] = useState('all')
   const [tagFilter, setTagFilter] = useState('all')
@@ -371,6 +411,10 @@ export function WhatsHappeningPage({ currentProfile }) {
     return `${words[0][0] || ''}${words[1][0] || ''}`.toUpperCase()
   }
 
+  function getCommentCount(postId) {
+    return commentsByPost[postId]?.length || 0
+  }
+
   async function loadPosts() {
     setLoading(true)
     const { data, error } = await supabase
@@ -379,6 +423,57 @@ export function WhatsHappeningPage({ currentProfile }) {
       .order('created_at', { ascending: false })
     if (error) console.error('loadPosts error:', error)
     const postsData = data || []
+    let commentsMap = {}
+
+    if (postsData.length > 0) {
+      try {
+        const postIds = postsData.map(p => p.id)
+        const { data: likeRows, error: likesError } = await supabase
+          .from('post_likes')
+          .select('post_id')
+          .in('post_id', postIds)
+
+        if (likesError) {
+          console.error('loadPosts likes error:', likesError)
+        } else {
+          const likeCounts = (likeRows || []).reduce((acc, row) => {
+            acc[row.post_id] = (acc[row.post_id] || 0) + 1
+            return acc
+          }, {})
+
+          postsData.forEach(post => {
+            post.likes = likeCounts[post.id] || 0
+          })
+        }
+      } catch (likesErr) {
+        console.error('loadPosts likes fetch exception:', likesErr)
+      }
+
+      try {
+        const postIds = postsData.map(p => p.id)
+        const { data: commentRows, error: commentsError } = await supabase
+          .from('post_comments')
+          .select('id, post_id, user_id, comment, created_at')
+          .in('post_id', postIds)
+          .order('created_at', { ascending: true })
+
+        if (commentsError) {
+          console.error('loadPosts comments error:', commentsError)
+        } else {
+          commentsMap = (commentRows || []).reduce((acc, row) => {
+            if (!acc[row.post_id]) acc[row.post_id] = []
+            acc[row.post_id].push(row)
+            return acc
+          }, {})
+
+          postsData.forEach(post => {
+            post.comments_count = commentsMap[post.id]?.length || 0
+          })
+        }
+      } catch (commentsErr) {
+        console.error('loadPosts comments fetch exception:', commentsErr)
+      }
+    }
 
     if (postsData.length > 0) {
       try {
@@ -399,6 +494,12 @@ export function WhatsHappeningPage({ currentProfile }) {
             const profiles = Array.isArray(payload?.staff) ? payload.staff : []
             const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]))
             postsData.forEach(p => { p.author = profileMap[p.created_by] || null })
+            commentsMap = Object.fromEntries(
+              Object.entries(commentsMap).map(([postId, comments]) => [
+                postId,
+                comments.map(comment => ({ ...comment, author: profileMap[comment.user_id] || null })),
+              ])
+            )
           } else {
             postsData.forEach(p => { p.author = null })
           }
@@ -411,7 +512,46 @@ export function WhatsHappeningPage({ currentProfile }) {
     }
 
     setPosts(postsData)
+    setCommentsByPost(commentsMap)
     setLoading(false)
+  }
+
+  async function handleAddComment(postId) {
+    const text = (commentDraftByPost[postId] || '').trim()
+    if (!text || !currentProfile?.id) return
+
+    setCommentingPostId(postId)
+    setCommentErrorByPost(prev => ({ ...prev, [postId]: '' }))
+
+    try {
+      const { data: inserted, error } = await supabase
+        .from('post_comments')
+        .insert({ post_id: postId, user_id: currentProfile.id, comment: text })
+        .select('id, post_id, user_id, comment, created_at')
+        .single()
+
+      if (error) throw error
+
+      const commentWithAuthor = {
+        ...inserted,
+        author: {
+          id: currentProfile.id,
+          first_name: currentProfile.first_name,
+          last_name: currentProfile.last_name,
+        },
+      }
+
+      setCommentsByPost(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), commentWithAuthor],
+      }))
+      setCommentDraftByPost(prev => ({ ...prev, [postId]: '' }))
+      setPosts(prev => prev.map(post => post.id === postId ? { ...post, comments_count: (post.comments_count || 0) + 1 } : post))
+    } catch (err) {
+      setCommentErrorByPost(prev => ({ ...prev, [postId]: err.message || 'Could not post comment.' }))
+    }
+
+    setCommentingPostId(null)
   }
 
   async function loadUserLikes() {
@@ -481,8 +621,8 @@ export function WhatsHappeningPage({ currentProfile }) {
   const years = Object.keys(byYear).map(Number).sort((a, b) => b - a)
 
   // Get trending posts
-  const trendingMostLiked = [...filtered].sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 3)
-  const trendingMostViewed = [...filtered].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 3)
+  const trendingMostLiked = [...filtered].filter(p => (p.likes || 0) > 0).sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 3)
+  const trendingMostCommented = [...filtered].filter(p => (p.comments_count || 0) > 0).sort((a, b) => (b.comments_count || 0) - (a.comments_count || 0)).slice(0, 3)
 
   function toggleYear(yr) {
     setExpandedYears(prev => ({ ...prev, [yr]: !prev[yr] }))
@@ -507,29 +647,14 @@ export function WhatsHappeningPage({ currentProfile }) {
               <CatIcon size={12}/> {cat.label}
             </span>
             <span className="post-centre-badge" style={{ background: centreColor.bg, color: centreColor.text }}>{centreName}</span>
-          </div>
-          <div className="post-meta-indicators">
-            {post.tags && post.tags.length > 0 && (
-              <div className="post-tags-indicator" title={`${post.tags.length} tag${post.tags.length > 1 ? 's' : ''}`}>
-                <div className="post-tags-dot"></div>
-                <div className="post-tags-tooltip">
-                  {post.tags.map(t => {
-                    const tag = getTag(t)
-                    return tag ? <span key={t} className="post-tag-badge" style={{ background: tag.bg, color: tag.colour }}>{tag.label}</span> : null
-                  })}
-                </div>
-              </div>
-            )}
+            {post.tags && post.tags.map(t => {
+              const tag = getTag(t)
+              return tag ? <span key={t} className="post-tag-badge" style={{ background: tag.bg, color: tag.colour }}>{tag.label}</span> : null
+            })}
             {attachments.length > 0 && (
-              <div className="post-attachment-indicator" title={`${attachments.length} attachment${attachments.length > 1 ? 's' : ''}`}>
-                <div className="post-attachment-dot"></div>
-                <div className="post-attachment-tooltip">
-                  <strong>Attachments</strong>
-                  {attachments.map((attachment, index) => (
-                    <span key={`${post.id}-attachment-name-${index}`}>{attachment.name}</span>
-                  ))}
-                </div>
-              </div>
+              <span className="post-attachment-badge" title={`${attachments.length} attachment${attachments.length > 1 ? 's' : ''}`}>
+                <Paperclip size={11}/> {attachments.length}
+              </span>
             )}
           </div>
           <div className="post-card-actions">
@@ -548,7 +673,7 @@ export function WhatsHappeningPage({ currentProfile }) {
             <div className={`post-images post-images-${post.images.length}`}>
               {post.images.map((url, i) => (
                 <div key={i}>
-                  <img src={url} alt={`Image ${i + 1}`} />
+                  <img src={url} alt={`Image ${i + 1}`} loading="lazy" decoding="async" />
                 </div>
               ))}
             </div>
@@ -566,6 +691,9 @@ export function WhatsHappeningPage({ currentProfile }) {
           </div>
           <button className={`post-like-btn ${userLikes.has(post.id) ? 'liked' : ''}`} onClick={(e) => { e.stopPropagation(); handleLike(post.id) }} disabled={liking === post.id} title="Like this post">
             <ThumbsUp size={14}/> {post.likes || 0}
+          </button>
+          <button className="post-comment-btn" onClick={(e) => { e.stopPropagation(); openPost(post) }} title="Open comments">
+            <MessageCircle size={14}/> {getCommentCount(post.id)}
           </button>
         </div>
       </article>
@@ -587,16 +715,18 @@ export function WhatsHappeningPage({ currentProfile }) {
       <div className="whats-happening-container">
         <div className="whats-happening-main">
           <div className="events-filter-bar">
-            <button className={`filter-tab ${centreFilter === 'all' ? 'active' : ''}`} onClick={() => setCentreFilter('all')} style={centreFilter === 'all' ? { background: getCentreColor('All Centres').bg, borderColor: getCentreColor('All Centres').bg } : {}}>All Centres + Company-wide</button>
-            {isAdmin ? (
-              CENTRES.map(c => (
-                <button key={c} className={`filter-tab ${centreFilter === c ? 'active' : ''}`} onClick={() => setCentreFilter(c)} style={centreFilter === c ? { background: getCentreColor(c).bg, borderColor: getCentreColor(c).bg } : {}}>{c}</button>
-              ))
-            ) : (
-              <button className={`filter-tab ${centreFilter === currentProfile?.centre ? 'active' : ''}`} onClick={() => setCentreFilter(currentProfile?.centre)} style={centreFilter === currentProfile?.centre ? { background: getCentreColor(currentProfile?.centre).bg, borderColor: getCentreColor(currentProfile?.centre).bg } : {}}>
-                {currentProfile?.centre}
-              </button>
-            )}
+            <select
+              className="centre-filter-select"
+              value={centreFilter}
+              onChange={(e) => setCentreFilter(e.target.value)}
+            >
+              <option value="all">All Centres + Company-wide</option>
+              {isAdmin ? (
+                CENTRES.map(c => <option key={c} value={c}>{c}</option>)
+              ) : (
+                <option value={currentProfile?.centre}>{currentProfile?.centre}</option>
+              )}
+            </select>
           </div>
 
           <div className="tag-filter-bar">
@@ -656,37 +786,43 @@ export function WhatsHappeningPage({ currentProfile }) {
         {/* Trends Sidebar */}
         <aside className="whats-happening-sidebar">
           <div className="trends-panel">
-            <h3 className="trends-title">Trending</h3>
-            
+            <h3 className="trends-title"><Flame size={16}/> Trending</h3>
+
             <div className="trends-section trends-section-liked">
-              <h4 className="trends-subtitle">Most Liked</h4>
+              <h4 className="trends-subtitle"><ThumbsUp size={13}/> Most Liked</h4>
               {trendingMostLiked.length === 0 ? (
-                <p className="trends-empty">No posts yet</p>
+                <p className="trends-empty">No likes yet</p>
               ) : (
                 <div className="trends-list">
-                  {trendingMostLiked.map(post => (
-                    <div key={post.id} className="trend-item" onClick={() => document.getElementById(`post-${post.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
-                      <p className="trend-title">{post.title}</p>
-                      <p className="trend-author">{post.author?.first_name} {post.author?.last_name}</p>
-                      <span className="trend-badge"><span className="trend-badge-icon">👍</span> {post.likes || 0}</span>
-                    </div>
+                  {trendingMostLiked.map((post, index) => (
+                    <button key={post.id} type="button" className="trend-item" onClick={() => openPost(post)}>
+                      <span className="trend-rank">{index + 1}</span>
+                      <span className="trend-item-body">
+                        <span className="trend-title">{post.title}</span>
+                        <span className="trend-author">{getAuthorDisplay(post.author)}</span>
+                      </span>
+                      <span className="trend-badge"><ThumbsUp size={12}/> {post.likes || 0}</span>
+                    </button>
                   ))}
                 </div>
               )}
             </div>
 
-            <div className="trends-section trends-section-viewed">
-              <h4 className="trends-subtitle">Most Viewed</h4>
-              {trendingMostViewed.length === 0 ? (
-                <p className="trends-empty">No posts yet</p>
+            <div className="trends-section trends-section-commented">
+              <h4 className="trends-subtitle"><MessageCircle size={13}/> Most Commented</h4>
+              {trendingMostCommented.length === 0 ? (
+                <p className="trends-empty">No comments yet</p>
               ) : (
                 <div className="trends-list">
-                  {trendingMostViewed.map(post => (
-                    <div key={post.id} className="trend-item" onClick={() => document.getElementById(`post-${post.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
-                      <p className="trend-title">{post.title}</p>
-                      <p className="trend-author">{post.author?.first_name} {post.author?.last_name}</p>
-                      <span className="trend-badge"><span className="trend-badge-icon">👁️</span> {post.views || 0}</span>
-                    </div>
+                  {trendingMostCommented.map((post, index) => (
+                    <button key={post.id} type="button" className="trend-item" onClick={() => openPost(post)}>
+                      <span className="trend-rank">{index + 1}</span>
+                      <span className="trend-item-body">
+                        <span className="trend-title">{post.title}</span>
+                        <span className="trend-author">{getAuthorDisplay(post.author)}</span>
+                      </span>
+                      <span className="trend-badge"><MessageCircle size={12}/> {post.comments_count || 0}</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -707,6 +843,12 @@ export function WhatsHappeningPage({ currentProfile }) {
       {readingPost && (
         <PostReadModal
           post={readingPost}
+          comments={commentsByPost[readingPost.id] || []}
+          commentDraft={commentDraftByPost[readingPost.id] || ''}
+          onCommentDraftChange={(value) => setCommentDraftByPost(prev => ({ ...prev, [readingPost.id]: value }))}
+          onSubmitComment={() => handleAddComment(readingPost.id)}
+          commentSubmitting={commentingPostId === readingPost.id}
+          commentError={commentErrorByPost[readingPost.id] || ''}
           onClose={() => setReadingPost(null)}
         />
       )}

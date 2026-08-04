@@ -4,6 +4,20 @@ import { Plus, Trash2, X, CalendarDays, Clock, Edit2, ChevronLeft, ChevronRight 
 
 const ALL = 'all'
 
+const CENTRE_COLORS = {
+  'All Centres': { text: '#fff', bg: '#0e9a8a' },
+  'Papamoa Beach': { text: '#fff', bg: '#1a6eb5' },
+  'The Boulevard': { text: '#fff', bg: '#0e9a8a' },
+  'Terrace Views': { text: '#fff', bg: '#0084b3' },
+  'Livingstone': { text: '#fff', bg: '#12956d' },
+  'West Dune': { text: '#fff', bg: '#3b82c4' },
+  'Head Office': { text: '#fff', bg: '#2eb89f' },
+}
+
+function getCentreColor(centre) {
+  return CENTRE_COLORS[centre] || { text: '#fff', bg: '#6b7e8a' }
+}
+
 function MonthlyCalendar({ events, month, onMonthChange, onDateClick }) {
   const [hoveredDate, setHoveredDate] = useState(null)
   const [hoveredEvents, setHoveredEvents] = useState([])
@@ -333,9 +347,22 @@ export function EventsPage({ currentProfile }) {
       </div>
 
       <div className="events-filter-bar">
-        <button className={`filter-tab ${filter === ALL ? 'active' : ''}`} onClick={() => setFilter(ALL)}>All Centres</button>
+        <button
+          className={`filter-tab ${filter === ALL ? 'active' : ''}`}
+          onClick={() => setFilter(ALL)}
+          style={filter === ALL ? { background: getCentreColor('All Centres').bg, borderColor: getCentreColor('All Centres').bg, color: getCentreColor('All Centres').text } : {}}
+        >
+          All Centres
+        </button>
         {CENTRES.map(c => (
-          <button key={c} className={`filter-tab ${filter === c ? 'active' : ''}`} onClick={() => setFilter(c)}>{c}</button>
+          <button
+            key={c}
+            className={`filter-tab ${filter === c ? 'active' : ''}`}
+            onClick={() => setFilter(c)}
+            style={filter === c ? { background: getCentreColor(c).bg, borderColor: getCentreColor(c).bg, color: getCentreColor(c).text } : {}}
+          >
+            {c}
+          </button>
         ))}
       </div>
 
@@ -368,7 +395,15 @@ export function EventsPage({ currentProfile }) {
                                   {(event.start_time || event.end_time) && (
                                     <span><Clock size={12}/> {formatTime(event.start_time)}{event.end_time ? ` – ${formatTime(event.end_time)}` : ''}</span>
                                   )}
-                                  <span className="event-centre-badge">{event.centre || 'All Centres'}</span>
+                                  <span
+                                    className="event-centre-badge"
+                                    style={{
+                                      background: getCentreColor(event.centre || 'All Centres').bg,
+                                      color: getCentreColor(event.centre || 'All Centres').text,
+                                    }}
+                                  >
+                                    {event.centre || 'All Centres'}
+                                  </span>
                                 </div>
                                 {event.description && <p className="event-desc">{event.description}</p>}
                               </div>
@@ -398,7 +433,7 @@ export function EventsPage({ currentProfile }) {
                       className="events-section-title past-events-toggle"
                       onClick={() => setShowPastEvents(!showPastEvents)}
                     >
-                      📼 Past Events {showPastEvents ? '▼' : '▶'}
+                      Past Events {showPastEvents ? '▼' : '▶'}
                     </button>
                     {showPastEvents && (
                       Object.entries(pastGrouped).map(([month, monthEvents]) => (
@@ -418,7 +453,15 @@ export function EventsPage({ currentProfile }) {
                                     {(event.start_time || event.end_time) && (
                                       <span><Clock size={12}/> {formatTime(event.start_time)}{event.end_time ? ` – ${formatTime(event.end_time)}` : ''}</span>
                                     )}
-                                    <span className="event-centre-badge">{event.centre || 'All Centres'}</span>
+                                    <span
+                                      className="event-centre-badge"
+                                      style={{
+                                        background: getCentreColor(event.centre || 'All Centres').bg,
+                                        color: getCentreColor(event.centre || 'All Centres').text,
+                                      }}
+                                    >
+                                      {event.centre || 'All Centres'}
+                                    </span>
                                   </div>
                                   {event.description && <p className="event-desc">{event.description}</p>}
                                 </div>
@@ -484,7 +527,15 @@ export function EventsPage({ currentProfile }) {
                         {(event.start_time || event.end_time) && (
                           <span><Clock size={12}/> {formatTime(event.start_time)}{event.end_time ? ` – ${formatTime(event.end_time)}` : ''}</span>
                         )}
-                        <span className="event-centre-badge">{event.centre || 'All Centres'}</span>
+                        <span
+                          className="event-centre-badge"
+                          style={{
+                            background: getCentreColor(event.centre || 'All Centres').bg,
+                            color: getCentreColor(event.centre || 'All Centres').text,
+                          }}
+                        >
+                          {event.centre || 'All Centres'}
+                        </span>
                       </div>
                       {event.description && <p className="event-desc">{event.description}</p>}
                     </div>

@@ -2,6 +2,89 @@ import React, { useState, useEffect } from 'react'
 import { supabase, CENTRES } from '../lib/supabase.js'
 import { Plus, Trash2, X, Edit2, User } from 'lucide-react'
 
+function formatDateLabel(value) {
+  if (!value) return 'Not set'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Not set'
+  return parsed.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function PersonDetailModal({ person, appraisalCycles = [], onClose, onOpenAppraisal }) {
+  if (!person) return null
+
+  const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim() || 'Staff member'
+  const permissionLabel = person.permission === 'super_admin'
+    ? 'Super Admin'
+    : person.permission === 'centre_leader'
+      ? 'Centre Leader'
+      : 'Staff'
+
+  const personCycles = appraisalCycles
+    .filter((cycle) => cycle.staff_id === person.id)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  const latestCycle = personCycles[0] || null
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card person-detail-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Staff Profile</h2>
+          <button className="modal-close" onClick={onClose}><X size={20}/></button>
+        </div>
+
+        <div className="person-detail-body">
+          <div className="person-detail-head">
+            <div className="person-detail-photo">
+              {person.photo_url ? (
+                <img src={person.photo_url} alt={fullName} loading="lazy" decoding="async" />
+              ) : (
+                <div className="photo-placeholder"><User size={48}/></div>
+              )}
+            </div>
+            <div className="person-detail-title">
+              <h3>{fullName}</h3>
+              <p>{person.role_title || 'Role not set'}</p>
+            </div>
+          </div>
+
+          <div className="person-detail-grid">
+            <div className="person-detail-item"><strong>Centre</strong><span>{person.centre || 'Reliever / No centre'}</span></div>
+            <div className="person-detail-item"><strong>Access</strong><span>{permissionLabel}</span></div>
+            <div className="person-detail-item"><strong>Email</strong><span>{person.email || 'Not set'}</span></div>
+            <div className="person-detail-item"><strong>Mobile</strong><span>{person.mobile || 'Not set'}</span></div>
+            <div className="person-detail-item"><strong>Start Date</strong><span>{formatDateLabel(person.start_date)}</span></div>
+            <div className="person-detail-item"><strong>Date of Birth</strong><span>{formatDateLabel(person.date_of_birth)}</span></div>
+          </div>
+
+          <div className="person-detail-bio">
+            <strong>Bio</strong>
+            <p>{person.bio?.trim() ? person.bio : 'No bio added yet.'}</p>
+          </div>
+
+          <div className="person-detail-bio">
+            <strong>Appraisal</strong>
+            {latestCycle ? (
+              <div className="person-appraisal-summary">
+                <p><b>Template:</b> {latestCycle.template?.title || 'Template not set'}</p>
+                <p><b>Status:</b> {latestCycle.status}</p>
+                <p><b>Reviewer:</b> {latestCycle.reviewer_name || 'Not set'}</p>
+                <p><b>Period:</b> {latestCycle.period_start} to {latestCycle.period_end}</p>
+                {onOpenAppraisal && (
+                  <button className="btn-primary" type="button" onClick={() => onOpenAppraisal(person.id)} style={{ marginTop: 8 }}>
+                    Open Appraisal
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p>No appraisal assigned yet.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AddEditStaffModal({ staff, centre, onClose, onSaved, isAdmin }) {
   const isEdit = !!staff
   const [form, setForm] = useState({
@@ -73,17 +156,31 @@ function AddEditStaffModal({ staff, centre, onClose, onSaved, isAdmin }) {
   )
 }
 
-export function OurPeoplePage({ currentProfile }) {
+export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
   const [staff, setStaff] = useState([])
+  const [appraisalCycles, setAppraisalCycles] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [addCentre, setAddCentre] = useState('')
   const [editingStaff, setEditingStaff] = useState(null)
   const [editCentre, setEditCentre] = useState('')
   const [deleting, setDeleting] = useState(null)
+  const [selectedPerson, setSelectedPerson] = useState(null)
 
   const isAdmin = currentProfile?.permission === 'super_admin'
   const isCentreLeader = currentProfile?.permission === 'centre_leader'
+
+  function isRelieverProfile(person) {
+    const centreValue = typeof person?.centre === 'string' ? person.centre.trim().toLowerCase() : ''
+    const roleValue = typeof person?.role_title === 'string' ? person.role_title.trim().toLowerCase() : ''
+    const permissionValue = typeof person?.permission === 'string' ? person.permission.trim().toLowerCase() : ''
+
+    if (!centreValue) return true
+    if (centreValue === 'reliever' || centreValue === 'relievers') return true
+    if (permissionValue === 'reliever') return true
+    if (roleValue.includes('reliever')) return true
+    return false
+  }
 
   function calculateTenure(startDate) {
     if (!startDate) return ''
@@ -112,6 +209,14 @@ export function OurPeoplePage({ currentProfile }) {
   }
 
   useEffect(() => { loadStaff() }, [])
+
+  useEffect(() => {
+    if (staff.length === 0) {
+      setAppraisalCycles([])
+      return
+    }
+    loadAppraisals()
+  }, [staff.length, currentProfile?.permission])
 
   async function loadStaff() {
     setLoading(true)
@@ -147,6 +252,34 @@ export function OurPeoplePage({ currentProfile }) {
     setLoading(false)
   }
 
+  async function loadAppraisals() {
+    try {
+      const staffIds = staff.map((p) => p.id).filter(Boolean)
+      if (!staffIds.length) return
+
+      const { data, error } = await supabase
+        .from('appraisal_cycles')
+        .select('id, staff_id, reviewer_id, template_id, period_start, period_end, status, created_at, template:appraisal_templates(title), reviewer:profiles!appraisal_cycles_reviewer_id_fkey(first_name,last_name)')
+        .in('staff_id', staffIds)
+
+      if (error) {
+        console.error('Failed to load appraisal cycles for staff page:', error)
+        return
+      }
+
+      const nextCycles = (data || []).map((cycle) => ({
+        ...cycle,
+        template: Array.isArray(cycle.template) ? cycle.template[0] : cycle.template,
+        reviewer_name: cycle.reviewer
+          ? `${cycle.reviewer.first_name || ''} ${cycle.reviewer.last_name || ''}`.trim()
+          : '',
+      }))
+      setAppraisalCycles(nextCycles)
+    } catch (err) {
+      console.error('Appraisal cycle load error:', err)
+    }
+  }
+
   async function handleDelete(person) {
     setDeleting(person.id)
     await supabase.from('profiles').delete().eq('id', person.id)
@@ -174,6 +307,7 @@ export function OurPeoplePage({ currentProfile }) {
   const groupedBycentre = {}
   centreList.forEach(c => { groupedBycentre[c] = [] })
   staff.forEach(p => {
+    if (isRelieverProfile(p)) return
     if (!centreList.includes(p.centre)) return
     if (!groupedBycentre[p.centre]) groupedBycentre[p.centre] = []
     groupedBycentre[p.centre].push(p)
@@ -189,7 +323,7 @@ export function OurPeoplePage({ currentProfile }) {
   })
 
   // Separate relievers
-  const relievers = staff.filter(p => p.permission === 'staff' && !p.centre)
+  const relievers = staff.filter(isRelieverProfile)
   const centreStaff = centreList.map(c => ({
     centre: c,
     people: groupedBycentre[c] || [],
@@ -222,10 +356,23 @@ export function OurPeoplePage({ currentProfile }) {
               ) : (
                 <div className="people-grid">
                   {people.map(person => (
-                    <div key={person.id} className="person-card">
+                    <div
+                      key={person.id}
+                      className="person-card person-card-clickable"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedPerson(person)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedPerson(person)
+                        }
+                      }}
+                      aria-label={`View details for ${person.first_name} ${person.last_name}`}
+                    >
                       <div className="person-photo">
                         {person.photo_url ? (
-                          <img src={person.photo_url} alt={`${person.first_name} ${person.last_name}`} />
+                          <img src={person.photo_url} alt={`${person.first_name} ${person.last_name}`} loading="lazy" decoding="async" />
                         ) : (
                           <div className="photo-placeholder"><User size={40}/></div>
                         )}
@@ -241,7 +388,8 @@ export function OurPeoplePage({ currentProfile }) {
                       {(canEditPerson(person) || canDeletePerson(person)) && (
                         <div className="person-actions">
                           {canEditPerson(person) && (
-                            <button className="btn-icon-primary" onClick={() => {
+                            <button className="btn-icon-primary" onClick={(e) => {
+                              e.stopPropagation()
                               setEditingStaff(person)
                               setEditCentre(person.centre)
                             }} title="Edit person">
@@ -249,7 +397,10 @@ export function OurPeoplePage({ currentProfile }) {
                             </button>
                           )}
                           {canDeletePerson(person) && (
-                            <button className="btn-icon-danger" onClick={() => handleDelete(person)} disabled={deleting === person.id} title="Remove person">
+                            <button className="btn-icon-danger" onClick={(e) => {
+                              e.stopPropagation()
+                              handleDelete(person)
+                            }} disabled={deleting === person.id} title="Remove person">
                               <Trash2 size={15}/>
                             </button>
                           )}
@@ -267,10 +418,23 @@ export function OurPeoplePage({ currentProfile }) {
               <h2 className="centre-title">🔄 Relievers</h2>
               <div className="people-grid">
                 {relievers.map(person => (
-                  <div key={person.id} className="person-card">
+                  <div
+                    key={person.id}
+                    className="person-card person-card-clickable"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedPerson(person)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setSelectedPerson(person)
+                      }
+                    }}
+                    aria-label={`View details for ${person.first_name} ${person.last_name}`}
+                  >
                     <div className="person-photo">
                       {person.photo_url ? (
-                        <img src={person.photo_url} alt={`${person.first_name} ${person.last_name}`} />
+                        <img src={person.photo_url} alt={`${person.first_name} ${person.last_name}`} loading="lazy" decoding="async" />
                       ) : (
                         <div className="photo-placeholder"><User size={40}/></div>
                       )}
@@ -281,7 +445,8 @@ export function OurPeoplePage({ currentProfile }) {
                     </div>
                     <div className="person-actions">
                       {canEditPerson(person) && (
-                        <button className="btn-icon-primary" onClick={() => {
+                        <button className="btn-icon-primary" onClick={(e) => {
+                          e.stopPropagation()
                           setEditingStaff(person)
                           setEditCentre(null)
                         }} title="Edit person">
@@ -289,7 +454,10 @@ export function OurPeoplePage({ currentProfile }) {
                         </button>
                       )}
                       {canDeletePerson(person) && (
-                        <button className="btn-icon-danger" onClick={() => handleDelete(person)} disabled={deleting === person.id} title="Remove person">
+                        <button className="btn-icon-danger" onClick={(e) => {
+                          e.stopPropagation()
+                          handleDelete(person)
+                        }} disabled={deleting === person.id} title="Remove person">
                           <Trash2 size={15}/>
                         </button>
                       )}
@@ -341,6 +509,7 @@ export function OurPeoplePage({ currentProfile }) {
 
       {addCentre && showAdd && <AddEditStaffModal staff={null} centre={addCentre || null} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); loadStaff() }} isAdmin={isAdmin} />}
       {editingStaff && <AddEditStaffModal staff={editingStaff} centre={editCentre} onClose={() => setEditingStaff(null)} onSaved={loadStaff} isAdmin={isAdmin} />}
+      {selectedPerson && <PersonDetailModal person={selectedPerson} appraisalCycles={appraisalCycles} onClose={() => setSelectedPerson(null)} onOpenAppraisal={onOpenAppraisal} />}
     </div>
   )
 }

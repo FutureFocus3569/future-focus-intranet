@@ -9,6 +9,12 @@ function getInitials(name) {
   return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase()
 }
 
+function normalizePhotoUrl(photoUrl) {
+  const value = String(photoUrl || '').trim()
+  if (!value || value === 'null' || value === 'undefined') return ''
+  return value
+}
+
 function formatTimeAgo(createdAt) {
   const diffSec = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000)
   if (diffSec < 60) return 'Just now'
@@ -49,7 +55,7 @@ function buildBirthdayList(staff) {
         id: p.id,
         name,
         centre: p.centre || 'No Centre',
-        photoUrl: p.photo_url || '',
+        photoUrl: normalizePhotoUrl(p.photo_url),
         nextDate: next,
         displayDate: next.toLocaleDateString('en-NZ', { weekday: 'short', month: 'short', day: 'numeric' }),
         threadKey: `birthday:${p.id}:${monthDay}`,
@@ -61,26 +67,37 @@ function buildBirthdayList(staff) {
 
 function buildAnniversaryList(staff) {
   const today = new Date()
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const oneMonthDays = 31
+
   return (staff || [])
     .filter(p => p?.start_date)
     .map(p => {
       const start = new Date(p.start_date)
       if (Number.isNaN(start.getTime())) return null
 
-      const years = today.getFullYear() - start.getFullYear() - ((today.getMonth() < start.getMonth() || (today.getMonth() === start.getMonth() && today.getDate() < start.getDate())) ? 1 : 0)
-      if (years < 0) return null
-
       const next = nextAnniversary(p.start_date)
+      if (!next) return null
+
+      const milestoneYears = next.getFullYear() - start.getFullYear()
+      if (milestoneYears <= 0) return null
+
+      const nextAnniversaryDay = new Date(next.getFullYear(), next.getMonth(), next.getDate())
+      const daysUntil = Math.ceil((nextAnniversaryDay.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24))
+
+      // Show anniversary celebrations only in the month leading into their next year mark.
+      if (daysUntil < 0 || daysUntil > oneMonthDays) return null
+
       const name = `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown Staff'
       const monthDay = `${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`
       return {
         id: p.id,
         name,
         centre: p.centre || 'No Centre',
-        photoUrl: p.photo_url || '',
-        years,
-        nextDate: next || start,
-        displayDate: `${Math.max(0, years)} year${years === 1 ? '' : 's'}`,
+        photoUrl: normalizePhotoUrl(p.photo_url),
+        years: milestoneYears,
+        nextDate: nextAnniversaryDay,
+        displayDate: `${milestoneYears} year${milestoneYears === 1 ? '' : 's'}`,
         subtitle: next ? next.toLocaleDateString('en-NZ', { weekday: 'short', month: 'short', day: 'numeric' }) : '',
         threadKey: `anniversary:${p.id}:${monthDay}`,
       }
@@ -101,6 +118,7 @@ export function CelebrationsPage({ currentProfile, type = 'birthdays', staff = [
   const [loadingThread, setLoadingThread] = useState('')
   const [sendingThread, setSendingThread] = useState('')
   const [draftByThread, setDraftByThread] = useState({})
+  const [brokenPhotoKeys, setBrokenPhotoKeys] = useState(new Set())
 
   async function loadComments(threadKey) {
     setLoadingThread(threadKey)
@@ -207,12 +225,24 @@ export function CelebrationsPage({ currentProfile, type = 'birthdays', staff = [
           {people.map(person => {
             const comments = commentsByThread[person.threadKey] || []
             const isOpen = openThread === person.threadKey
+            const showPhoto = Boolean(person.photoUrl) && !brokenPhotoKeys.has(person.threadKey)
 
             return (
               <article key={person.threadKey} className="celebration-card">
                 <div className="celebration-person-head">
-                  {person.photoUrl ? (
-                    <img src={person.photoUrl} alt={person.name} className="celebration-avatar" />
+                  {showPhoto ? (
+                    <img
+                      src={person.photoUrl}
+                      alt={person.name}
+                      className="celebration-avatar"
+                      onError={() => {
+                        setBrokenPhotoKeys(prev => {
+                          const next = new Set(prev)
+                          next.add(person.threadKey)
+                          return next
+                        })
+                      }}
+                    />
                   ) : (
                     <div className="celebration-avatar celebration-avatar-fallback">{getInitials(person.name)}</div>
                   )}

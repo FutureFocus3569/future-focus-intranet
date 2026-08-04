@@ -124,19 +124,70 @@ export function normalizeReviewPayload(documentData = {}) {
   }
 }
 
-export function isDocumentVisibleForCentre(documentData, centreName) {
+export function isDocumentVisibleForCentre(documentData, centreName, permission = null) {
   if (!documentData) return false
+  if (permission === 'super_admin' || permission === 'policy_admin') return true
   if (!documentData.is_centre_specific) return true
   if (!centreName) return false
   return documentData.centre_scope === centreName
 }
 
+export function getPolicyFeedbackWindow(documentData) {
+  if (!documentData) {
+    return {
+      opensAt: null,
+      closesAt: null,
+      nextReviewDate: null,
+    }
+  }
+
+  const nextReviewDate = formatDateOnly(documentData.next_review_date || null)
+  const closesAt = formatDateOnly(documentData.review_feedback_closes_at || nextReviewDate || null)
+  const opensAt = formatDateOnly(documentData.review_feedback_opens_at || calculateFeedbackOpenDate(nextReviewDate || closesAt))
+  const dueAt = nextReviewDate || closesAt || null
+
+  return {
+    opensAt,
+    closesAt,
+    nextReviewDate,
+    dueAt,
+    alertStartsAt: opensAt || (dueAt ? calculateFeedbackOpenDate(dueAt) : null),
+  }
+}
+
+export function getPolicyReviewAlertState(documentData) {
+  if (!documentData) return 'none'
+  if (documentData.document_type === 'appendix' || documentData.parent_document_id) return 'none'
+
+  const today = formatDateOnly(new Date())
+  const { opensAt, closesAt, nextReviewDate, dueAt, alertStartsAt } = getPolicyFeedbackWindow(documentData)
+
+  const todayDate = parseDateOnly(today)
+  const opensDate = parseDateOnly(opensAt)
+  const closesDate = parseDateOnly(closesAt)
+  const dueDate = parseDateOnly(dueAt)
+  const alertStartsDate = parseDateOnly(alertStartsAt)
+
+  if (!opensAt && !closesAt && !nextReviewDate && !dueAt) return 'none'
+
+  // Primary overdue rule: once the review due date has passed, it is overdue.
+  if (dueDate && todayDate && dueDate < todayDate) return 'overdue'
+
+  // No alert before the 4-week review window starts.
+  if (alertStartsDate && todayDate && todayDate < alertStartsDate) return 'none'
+
+  // Inside the pre-review alert window but not overdue yet.
+  if (dueDate && alertStartsDate && todayDate && todayDate >= alertStartsDate && todayDate <= dueDate) {
+    // If explicit feedback dates exist and we're within them, mark as open.
+    if (opensDate && closesDate && todayDate >= opensDate && todayDate <= closesDate) return 'open'
+    return 'upcoming'
+  }
+
+  if (opensDate && closesDate && todayDate && todayDate >= opensDate && todayDate <= closesDate) return 'open'
+
+  return 'none'
+}
+
 export function isPolicyOpenForFeedback(documentData) {
-  if (!documentData) return false
-  if (documentData.document_type === 'appendix' || documentData.parent_document_id) return false
-  const today = new Date().toISOString().slice(0, 10)
-  const opens = documentData.review_feedback_opens_at
-  const closes = documentData.review_feedback_closes_at
-  if (!opens || !closes) return false
-  return today >= opens && today <= closes
+  return getPolicyReviewAlertState(documentData) === 'open'
 }

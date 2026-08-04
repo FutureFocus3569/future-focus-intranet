@@ -49,6 +49,18 @@ function normalizeDateInput(value: unknown): string | null {
   return parsed.toISOString().slice(0, 10)
 }
 
+function isLikelyEmailDeliveryIssue(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('error sending confirmation email') ||
+    lower.includes('smtp') ||
+    lower.includes('rate limit') ||
+    lower.includes('not authorized') ||
+    lower.includes('recipient') ||
+    lower.includes('mailbox')
+  )
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -103,6 +115,11 @@ Deno.serve(async (req) => {
     if (req.method === 'POST') {
       const { first_name, last_name, email, mobile, centre, role_title, permission, date_of_birth, start_date, invite_message } = await req.json()
 
+      const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
+      if (!normalizedEmail) {
+        return new Response(JSON.stringify({ error: 'Email is required' }), { status: 400, headers: corsHeaders })
+      }
+
       const dob = normalizeDateInput(date_of_birth)
       const start = normalizeDateInput(start_date)
 
@@ -136,13 +153,18 @@ Deno.serve(async (req) => {
 
       // Create the auth user AND send invite email in one step.
       // If redirect URL is not allowed in project auth settings, retry with project default URL.
-      let { data: newUser, error: createError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, invitePayload)
+      let inviteDelivery: 'email' | 'manual_link' = 'email'
+      let inviteLink: string | null = null
+      let inviteNotice: string | null = null
+      let invitedUserId: string | null = null
+
+      let { data: newUser, error: createError } = await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, invitePayload)
 
       if (createError) {
         const inviteErrorText = toErrorMessage(createError).toLowerCase()
         const likelyRedirectError = inviteErrorText.includes('redirect') || inviteErrorText.includes('not allowed')
         if (likelyRedirectError) {
-          const retry = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+          const retry = await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
             data: invitePayload.data,
           })
           newUser = retry.data
@@ -150,46 +172,67 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (createError) {
+      if (!createError) {
+        invitedUserId = newUser?.user?.id ?? null
+      } else {
         const rawMessage = toErrorMessage(createError, 'Could not send invite email')
-        const lower = rawMessage.toLowerCase()
+        if (isLikelyEmailDeliveryIssue(rawMessage)) {
+          const { data: generatedLink, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'invite',
+            email: normalizedEmail,
+            options: invitePayload,
+          })
 
-        if (lower.includes('error sending confirmation email') || lower.includes('smtp') || lower.includes('rate limit')) {
-          return new Response(
-            JSON.stringify({
-              error: `Invite email could not be sent. Please check Supabase Auth email settings (SMTP/provider, sender, and rate limits). Details: ${rawMessage}`,
-            }),
-            { status: 400, headers: corsHeaders }
-          )
+          if (linkError) {
+            const linkMessage = toErrorMessage(linkError, 'Could not generate invite link')
+            return new Response(
+              JSON.stringify({
+                error: `Invite email could not be sent, and fallback link generation failed. Email delivery error: ${rawMessage}. Fallback error: ${linkMessage}`,
+              }),
+              { status: 400, headers: corsHeaders }
+            )
+          }
+
+          invitedUserId = generatedLink?.user?.id ?? null
+          inviteLink = generatedLink?.properties?.action_link ?? null
+          inviteDelivery = 'manual_link'
+          inviteNotice = 'Automatic invite email could not be delivered. Copy the invite link and send it from your own email account.'
+        } else {
+          return new Response(JSON.stringify({ error: rawMessage }), { status: 400, headers: corsHeaders })
         }
-
-        return new Response(JSON.stringify({ error: rawMessage }), { status: 400, headers: corsHeaders })
       }
 
-      const baseProfile = { id: newUser.user.id, first_name, last_name, mobile, centre, role_title, permission }
+      if (!invitedUserId) {
+        return new Response(JSON.stringify({ error: 'Invite user was created without a valid user id.' }), { status: 400, headers: corsHeaders })
+      }
+
+      const baseProfile = { id: invitedUserId, first_name, last_name, mobile, centre, role_title, permission }
       const profileWithOptionalDates = { ...baseProfile, date_of_birth: dob, start_date: start }
 
       // Insert profile with optional date fields; if the project schema does not yet have
       // those columns, gracefully retry with base fields so invites still work.
       let { error: profileError } = await supabaseAdmin
         .from('profiles')
-        .insert(profileWithOptionalDates)
+        .upsert(profileWithOptionalDates, { onConflict: 'id' })
 
       if (profileError) {
         const message = toErrorMessage(profileError).toLowerCase()
         const missingDateColumns = message.includes('date_of_birth') || message.includes('start_date')
         if (missingDateColumns) {
-          const retry = await supabaseAdmin.from('profiles').insert(baseProfile)
+          const retry = await supabaseAdmin.from('profiles').upsert(baseProfile, { onConflict: 'id' })
           profileError = retry.error
         }
       }
 
       if (profileError) {
-        await supabaseAdmin.auth.admin.deleteUser(newUser.user.id)
+        await supabaseAdmin.auth.admin.deleteUser(invitedUserId)
         return new Response(JSON.stringify({ error: toErrorMessage(profileError, 'Could not create staff profile') }), { status: 400, headers: corsHeaders })
       }
 
-      return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders })
+      return new Response(
+        JSON.stringify({ success: true, invite_delivery: inviteDelivery, invite_link: inviteLink, message: inviteNotice }),
+        { status: 200, headers: corsHeaders }
+      )
     }
 
     if (req.method === 'DELETE') {
@@ -235,12 +278,13 @@ Deno.serve(async (req) => {
     }
 
     if (req.method === 'PATCH') {
-      const { userId, centre, role_title, permission, mobile, start_date } = await req.json()
+      const { userId, centre, role_title, permission, mobile, date_of_birth, start_date } = await req.json()
 
       if (!userId) {
         return new Response(JSON.stringify({ error: 'User ID is required' }), { status: 400, headers: corsHeaders })
       }
 
+      const dob = normalizeDateInput(date_of_birth)
       const start = normalizeDateInput(start_date)
 
       const { data: targetProfile, error: targetProfileError } = await supabaseAdmin
@@ -269,6 +313,7 @@ Deno.serve(async (req) => {
       if (start_date !== undefined) updates.start_date = start
 
       if (callerProfile.permission === 'super_admin') {
+        if (date_of_birth !== undefined) updates.date_of_birth = dob
         if (typeof permission === 'string') updates.permission = permission
         if (typeof centre === 'string') updates.centre = centre
       }

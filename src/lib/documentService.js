@@ -5,7 +5,7 @@
 
 import { supabase } from './supabase'
 import { DOCUMENT_STATUS } from './documentTypes'
-import { normalizeReviewPayload } from './policyReview'
+import { calculateFeedbackOpenDate, calculateNextReviewDate, normalizeReviewPayload } from './policyReview'
 
 /**
  * CREATE A NEW DOCUMENT
@@ -485,6 +485,132 @@ export async function createNewVersion(documentId, userId) {
     return data
   } catch (error) {
     console.error('Error creating new version:', error)
+    throw error
+  }
+}
+
+/**
+ * CREATE REVIEWED POLICY VERSION
+ * Creates a new published policy version from review edits, then archives the previous version.
+ *
+ * @param {Object} sourceDocument - Existing current document row
+ * @param {Object} options - { editedText, reviewFrequencyMonths }
+ * @param {string} userId - UUID of user creating version
+ * @returns {Object} { newDocument, archivedDocument }
+ */
+export async function createReviewedPolicyVersion(sourceDocument, options, userId) {
+  try {
+    if (!sourceDocument?.id) throw new Error('Source policy is required')
+
+    const editedText = (options?.editedText || '').trim()
+    if (!editedText) throw new Error('Policy content cannot be empty')
+
+    const reviewFrequencyMonths = Number(options?.reviewFrequencyMonths || sourceDocument.review_frequency_months || 12)
+    if (!Number.isFinite(reviewFrequencyMonths) || reviewFrequencyMonths <= 0) {
+      throw new Error('Review frequency must be a positive number of months')
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+    const nextReviewDate = calculateNextReviewDate(today, reviewFrequencyMonths)
+    const feedbackOpenDate = calculateFeedbackOpenDate(nextReviewDate)
+    const baseVersion = sourceDocument.version || '1.0'
+
+    const reviewedPayload = normalizeReviewPayload({
+      title: sourceDocument.title,
+      description: sourceDocument.description || null,
+      category: sourceDocument.category,
+      document_type: sourceDocument.document_type || 'policy',
+      owner_id: sourceDocument.owner_id || null,
+      storage_bucket: sourceDocument.storage_bucket || 'policy-documents',
+      storage_path: sourceDocument.storage_path,
+      original_filename: sourceDocument.original_filename || `${sourceDocument.title}.txt`,
+      mime_type: sourceDocument.mime_type || 'text/plain',
+      file_size: sourceDocument.file_size || null,
+      version: incrementVersion(baseVersion),
+      parent_document_id: sourceDocument.parent_document_id || null,
+      previous_version_id: sourceDocument.id,
+      is_current_version: true,
+      status: DOCUMENT_STATUS.PUBLISHED,
+      approved_date: new Date().toISOString(),
+      approved_by: userId,
+      effective_date: today,
+      last_reviewed_date: today,
+      next_review_date: nextReviewDate,
+      review_feedback_opens_at: feedbackOpenDate,
+      review_feedback_closes_at: nextReviewDate,
+      review_frequency_months: reviewFrequencyMonths,
+      policy_owner_id: sourceDocument.policy_owner_id || null,
+      is_centre_specific: Boolean(sourceDocument.is_centre_specific),
+      centre_scope: sourceDocument.centre_scope || null,
+      uploaded_by: userId,
+      created_by: userId,
+      updated_by: userId,
+      notes: sourceDocument.notes || null,
+      extracted_text: editedText,
+      ai_processing_status: 'completed',
+      ai_extracted_metadata: {
+        source: 'policy-review-editor',
+        previous_version_id: sourceDocument.id,
+        reviewed_on: today,
+      },
+      processing_error: null,
+    })
+
+    const { data: newDocument, error: createError } = await supabase
+      .from('documents')
+      .insert([reviewedPayload])
+      .select()
+      .single()
+
+    if (createError) throw createError
+
+    const { data: archivedDocument, error: archiveError } = await supabase
+      .from('documents')
+      .update({
+        status: DOCUMENT_STATUS.ARCHIVED,
+        is_current_version: false,
+        archived_at: new Date().toISOString(),
+        archived_by: userId,
+        updated_by: userId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', sourceDocument.id)
+      .select()
+      .single()
+
+    if (archiveError) {
+      // Best-effort cleanup to avoid leaving a duplicate current published document.
+      await supabase
+        .from('documents')
+        .update({
+          status: DOCUMENT_STATUS.ARCHIVED,
+          is_current_version: false,
+          archived_at: new Date().toISOString(),
+          archived_by: userId,
+          updated_by: userId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', newDocument.id)
+      throw archiveError
+    }
+
+    await logDocumentAction(sourceDocument.id, userId, 'superseded_by_review', {
+      newVersionId: newDocument.id,
+      oldVersion: sourceDocument.version || null,
+      newVersion: newDocument.version || null,
+    })
+
+    await logDocumentAction(newDocument.id, userId, 'created_from_review', {
+      previousVersionId: sourceDocument.id,
+      previousVersion: sourceDocument.version || null,
+    })
+
+    return {
+      newDocument,
+      archivedDocument,
+    }
+  } catch (error) {
+    console.error('Error creating reviewed policy version:', error)
     throw error
   }
 }
