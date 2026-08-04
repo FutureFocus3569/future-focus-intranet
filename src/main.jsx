@@ -182,6 +182,7 @@ function Logo() {
 function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
   const canViewCentres = profile?.permission === 'super_admin' || profile?.permission === 'centre_leader'
   const visibleQuickLinks = quickLinks.filter(link => !link.roles || link.roles.includes(profile?.permission))
+  const [quickLinksOpen, setQuickLinksOpen] = useState(false)
   return <>
     {open && <div className="sidebar-backdrop" onClick={onClose} />}
     <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
@@ -212,22 +213,25 @@ function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
           )}
         </nav>
         <div className="nav-divider" />
-        <div className="quick-title">Quick Links</div>
-        <div className="quick-links">
-          {visibleQuickLinks.map(link => (
-            <button
-              className="quick-link"
-              key={link.key}
-              onClick={() => link.url && window.open(link.url, '_blank', 'noopener,noreferrer')}
-              disabled={!link.url}
-            >
-              <link.Icon size={15}/><span>{link.label}</span><ChevronRight size={14}/>
-            </button>
-          ))}
-        </div>
+        <button className="quick-links-toggle" onClick={() => setQuickLinksOpen(o => !o)}>
+          <ChevronRight size={14} className={`quick-links-chevron ${quickLinksOpen ? 'open' : ''}`}/> Quick Links
+        </button>
+        {quickLinksOpen && (
+          <div className="quick-links">
+            {visibleQuickLinks.map(link => (
+              <button
+                className="quick-link"
+                key={link.key}
+                onClick={() => link.url && window.open(link.url, '_blank', 'noopener,noreferrer')}
+                disabled={!link.url}
+              >
+                <link.Icon size={15}/><span>{link.label}</span><ChevronRight size={14}/>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="sidebar-art" aria-hidden="true"><span/><span/><span/></div>
       </div>
-      <button className="collapse"><ChevronRight size={14}/> Collapse</button>
     </aside>
   </>
 }
