@@ -181,7 +181,6 @@ function Logo() {
 
 function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
   const canViewCentres = profile?.permission === 'super_admin' || profile?.permission === 'centre_leader'
-  const [activeLink, setActiveLink] = useState(null)
   const visibleQuickLinks = quickLinks.filter(link => !link.roles || link.roles.includes(profile?.permission))
   return <>
     {open && <div className="sidebar-backdrop" onClick={onClose} />}
@@ -219,7 +218,7 @@ function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
             <button
               className="quick-link"
               key={link.key}
-              onClick={() => link.url && setActiveLink(link)}
+              onClick={() => link.url && window.open(link.url, '_blank', 'noopener,noreferrer')}
               disabled={!link.url}
             >
               <link.Icon size={15}/><span>{link.label}</span><ChevronRight size={14}/>
@@ -230,11 +229,34 @@ function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
       </div>
       <button className="collapse"><ChevronRight size={14}/> Collapse</button>
     </aside>
-    {activeLink && <QuickLinkModal link={activeLink} onClose={() => setActiveLink(null)} />}
   </>
 }
 
-function QuickLinkModal({ link, onClose }) {
+function ToolLoginsSection({ profile }) {
+  const [openKey, setOpenKey] = useState(null)
+  const links = quickLinks.filter(link => link.url && (!link.roles || link.roles.includes(profile?.permission)))
+  if (links.length === 0) return null
+
+  return (
+    <div className="tool-logins-section">
+      <div className="tool-logins-title"><Lock size={13}/> My Tool Logins</div>
+      <p className="tool-logins-hint">Save your own login for each tool below — only you can see it. Click the tool in the sidebar to open it, then use this to grab your username/password.</p>
+      <div className="tool-logins-list">
+        {links.map(link => (
+          <div className="tool-login-row" key={link.key}>
+            <button type="button" className="tool-login-row-header" onClick={() => setOpenKey(openKey === link.key ? null : link.key)}>
+              <link.Icon size={15}/><span>{link.label}</span>
+              <ChevronRight size={14} className={`tool-login-chevron ${openKey === link.key ? 'open' : ''}`} />
+            </button>
+            {openKey === link.key && <ToolLoginPanel link={link} />}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ToolLoginPanel({ link }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(null) // { username, has_password } | null
@@ -308,17 +330,7 @@ function QuickLinkModal({ link, onClose }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card modal-sm" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>{link.label}</h2>
-          <button className="modal-close" onClick={onClose}><X size={20}/></button>
-        </div>
-        <div style={{ padding: '4px 28px 28px' }}>
-          <p style={{ fontSize: 13, color: '#6b7e8a', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Lock size={13}/> Only you can see your saved {link.label} login.
-          </p>
-
+        <div className="tool-login-panel">
           {loading ? (
             <div className="staff-loading">Loading…</div>
           ) : editing ? (
@@ -364,8 +376,6 @@ function QuickLinkModal({ link, onClose }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
   )
 }
 
@@ -596,6 +606,7 @@ function ProfileModal({ profile, onClose, onSaved }) {
             <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving…' : 'Save Changes'}</button>
           </div>
         </form>
+        <ToolLoginsSection profile={profile} />
       </div>
     </div>
   );
