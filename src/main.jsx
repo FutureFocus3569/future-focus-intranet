@@ -4,9 +4,11 @@ import {
   Home, Building2, Users, GraduationCap, FileText, ClipboardList, Sparkles,
   Inbox, Search, Bell, MessageCircle, ChevronDown, ChevronRight, CalendarDays,
   Wrench, ShieldCheck, LifeBuoy, BookOpen, Leaf, UserRound, Trophy, FolderOpen,
-  Clock3, PartyPopper, HeartHandshake, LayoutDashboard, ExternalLink, Menu, X, LogOut, User, Edit2, Plus, Trash2
+  Clock3, PartyPopper, HeartHandshake, LayoutDashboard, ExternalLink, Menu, X, LogOut, User, Edit2, Plus, Trash2,
+  Eye, EyeOff, Copy, Check, Lock
 } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
+import { listSavedLogins, revealSavedLogin, saveLogin } from './lib/toolCredentialsService.js';
 import { LoginPage } from './pages/Login.jsx';
 import { PasswordResetPage } from './pages/PasswordReset.jsx';
 import { getPolicyReviewAlertState, isDocumentVisibleForCentre } from './lib/policyReview.js';
@@ -37,11 +39,11 @@ const navItems = [
 ];
 
 const quickLinks = [
-  [LayoutDashboard, 'Storypark'],
-  [LayoutDashboard, 'Discover'],
-  [LayoutDashboard, 'Xero'],
-  [ShieldCheck, 'Health & Safety'],
-  [LifeBuoy, 'IT Help'],
+  { key: 'storypark', Icon: LayoutDashboard, label: 'Storypark', url: 'https://nz.storypark.com/' },
+  { key: 'discover', Icon: LayoutDashboard, label: 'Discover', url: 'https://discoverchildcare.co.nz/', roles: ['super_admin', 'centre_leader'] },
+  { key: 'xero', Icon: LayoutDashboard, label: 'Xero', url: 'https://login.xero.com/' },
+  { key: 'health_safety', Icon: ShieldCheck, label: 'Health & Safety', url: null },
+  { key: 'it_help', Icon: LifeBuoy, label: 'IT Help', url: null },
 ];
 
 const topCards = [
@@ -179,45 +181,192 @@ function Logo() {
 
 function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
   const canViewCentres = profile?.permission === 'super_admin' || profile?.permission === 'centre_leader'
+  const [activeLink, setActiveLink] = useState(null)
+  const visibleQuickLinks = quickLinks.filter(link => !link.roles || link.roles.includes(profile?.permission))
   return <>
     {open && <div className="sidebar-backdrop" onClick={onClose} />}
     <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
       <button className="sidebar-close" onClick={onClose} aria-label="Close menu"><X size={20}/></button>
       <Logo />
-      <nav className="main-nav">
-        {navItems.map(([Icon, label]) => {
-          if (label === 'Centres' && !canViewCentres) return null
-          return (
-          <button key={label} className={`nav-item ${page === label ? 'active' : ''}`}
-            onClick={() => { setPage(label); onClose(); }}>
-            <Icon size={19} strokeWidth={1.9} /> <span>{label}</span>
-          </button>
-          )
-        })}
-        {canManageStaff && (
-          <button className={`nav-item ${page === 'Staff' ? 'active' : ''}`}
-            onClick={() => { setPage('Staff'); onClose(); }}>
-            <Users size={19} strokeWidth={1.9} /> <span>Staff</span>
-          </button>
-        )}
-        {(profile?.permission === 'super_admin' || profile?.permission === 'policy_admin') && (
-          <button className={`nav-item ${page === 'Knowledge Centre' ? 'active' : ''}`}
-            onClick={() => { setPage('Knowledge Centre'); onClose(); }}>
-            <BookOpen size={19} strokeWidth={1.9} /> <span>Knowledge Centre</span>
-          </button>
-        )}
-      </nav>
-      <div className="nav-divider" />
-      <div className="quick-title">Quick Links</div>
-      <div className="quick-links">
-        {quickLinks.map(([Icon, label]) => <button className="quick-link" key={label}>
-          <Icon size={15}/><span>{label}</span><ChevronRight size={14}/>
-        </button>)}
+      <div className="sidebar-scroll">
+        <nav className="main-nav">
+          {navItems.map(([Icon, label]) => {
+            if (label === 'Centres' && !canViewCentres) return null
+            return (
+            <button key={label} className={`nav-item ${page === label ? 'active' : ''}`}
+              onClick={() => { setPage(label); onClose(); }}>
+              <Icon size={19} strokeWidth={1.9} /> <span>{label}</span>
+            </button>
+            )
+          })}
+          {canManageStaff && (
+            <button className={`nav-item ${page === 'Staff' ? 'active' : ''}`}
+              onClick={() => { setPage('Staff'); onClose(); }}>
+              <Users size={19} strokeWidth={1.9} /> <span>Staff</span>
+            </button>
+          )}
+          {(profile?.permission === 'super_admin' || profile?.permission === 'policy_admin') && (
+            <button className={`nav-item ${page === 'Knowledge Centre' ? 'active' : ''}`}
+              onClick={() => { setPage('Knowledge Centre'); onClose(); }}>
+              <BookOpen size={19} strokeWidth={1.9} /> <span>Knowledge Centre</span>
+            </button>
+          )}
+        </nav>
+        <div className="nav-divider" />
+        <div className="quick-title">Quick Links</div>
+        <div className="quick-links">
+          {visibleQuickLinks.map(link => (
+            <button
+              className="quick-link"
+              key={link.key}
+              onClick={() => link.url && setActiveLink(link)}
+              disabled={!link.url}
+            >
+              <link.Icon size={15}/><span>{link.label}</span><ChevronRight size={14}/>
+            </button>
+          ))}
+        </div>
+        <div className="sidebar-art" aria-hidden="true"><span/><span/><span/></div>
       </div>
-      <div className="sidebar-art" aria-hidden="true"><span/><span/><span/></div>
       <button className="collapse"><ChevronRight size={14}/> Collapse</button>
     </aside>
+    {activeLink && <QuickLinkModal link={activeLink} onClose={() => setActiveLink(null)} />}
   </>
+}
+
+function QuickLinkModal({ link, onClose }) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(null) // { username, has_password } | null
+  const [editing, setEditing] = useState(false)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [revealedPassword, setRevealedPassword] = useState('')
+  const [revealing, setRevealing] = useState(false)
+  const [copied, setCopied] = useState('')
+
+  useEffect(() => {
+    let active = true
+    async function load() {
+      setLoading(true)
+      setError('')
+      try {
+        const items = await listSavedLogins()
+        const match = items.find(i => i.link_key === link.key) || null
+        if (!active) return
+        setSaved(match)
+        setUsername(match?.username || '')
+        setEditing(!match)
+      } catch (err) {
+        if (active) setError(err.message || 'Could not load your saved login')
+      }
+      if (active) setLoading(false)
+    }
+    load()
+    return () => { active = false }
+  }, [link.key])
+
+  async function handleReveal() {
+    setRevealing(true)
+    setError('')
+    try {
+      const data = await revealSavedLogin(link.key)
+      setRevealedPassword(data.password || '')
+    } catch (err) {
+      setError(err.message || 'Could not reveal password')
+    }
+    setRevealing(false)
+  }
+
+  async function handleCopy(text, which) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(which)
+      setTimeout(() => setCopied(''), 1500)
+    } catch {}
+  }
+
+  async function handleSave(e) {
+    e.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      await saveLogin(link.key, username, password)
+      setSaved({ username, has_password: Boolean(password) || saved?.has_password })
+      setRevealedPassword(password || revealedPassword)
+      setPassword('')
+      setEditing(false)
+    } catch (err) {
+      setError(err.message || 'Could not save your login')
+    }
+    setSaving(false)
+  }
+
+  function openTool() {
+    window.open(link.url, '_blank', 'noopener,noreferrer')
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card modal-sm" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{link.label}</h2>
+          <button className="modal-close" onClick={onClose}><X size={20}/></button>
+        </div>
+        <div style={{ padding: '4px 28px 28px' }}>
+          <p style={{ fontSize: 13, color: '#6b7e8a', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Lock size={13}/> Only you can see your saved {link.label} login.
+          </p>
+
+          {loading ? (
+            <div className="staff-loading">Loading…</div>
+          ) : editing ? (
+            <form onSubmit={handleSave} className="staff-form">
+              <label>Username / email
+                <input value={username} onChange={e => setUsername(e.target.value)} placeholder={`Your ${link.label} username`} required />
+              </label>
+              <label>Password
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={saved?.has_password ? 'Leave blank to keep current password' : `Your ${link.label} password`} required={!saved?.has_password} />
+              </label>
+              {error && <div className="form-error">{error}</div>}
+              <div className="form-actions">
+                {saved && <button type="button" className="btn-secondary" onClick={() => { setEditing(false); setError('') }}>Cancel</button>}
+                <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save login'}</button>
+              </div>
+            </form>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div className="post-attachment-preview" style={{ justifyContent: 'space-between' }}>
+                <span>{saved.username}</span>
+                <button type="button" className="btn-icon-edit" onClick={() => handleCopy(saved.username, 'user')} title="Copy username">
+                  {copied === 'user' ? <Check size={14}/> : <Copy size={14}/>}
+                </button>
+              </div>
+              <div className="post-attachment-preview" style={{ justifyContent: 'space-between' }}>
+                <span>{revealedPassword ? revealedPassword : '••••••••'}</span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button type="button" className="btn-icon-edit" onClick={() => revealedPassword ? setRevealedPassword('') : handleReveal()} disabled={revealing} title={revealedPassword ? 'Hide password' : 'Show password'}>
+                    {revealedPassword ? <EyeOff size={14}/> : <Eye size={14}/>}
+                  </button>
+                  {revealedPassword && (
+                    <button type="button" className="btn-icon-edit" onClick={() => handleCopy(revealedPassword, 'pass')} title="Copy password">
+                      {copied === 'pass' ? <Check size={14}/> : <Copy size={14}/>}
+                    </button>
+                  )}
+                </div>
+              </div>
+              {error && <div className="form-error">{error}</div>}
+              <div className="form-actions" style={{ justifyContent: 'space-between' }}>
+                <button type="button" className="btn-secondary" onClick={() => { setEditing(true); setError('') }}>Edit login</button>
+                <button type="button" className="btn-primary" onClick={openTool}><ExternalLink size={14}/> Open {link.label}</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function ProfileModal({ profile, onClose, onSaved }) {
