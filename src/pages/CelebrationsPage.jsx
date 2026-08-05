@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
-import { ChevronLeft, PartyPopper, Trophy, Send } from 'lucide-react'
+import { ChevronLeft, ChevronRight, PartyPopper, Trophy, Send } from 'lucide-react'
 
 function getInitials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
@@ -33,6 +33,10 @@ function nextBirthday(dateOfBirth) {
   return next
 }
 
+function isSameCalendarDay(a, b) {
+  return a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
 function nextAnniversary(startDate) {
   if (!startDate) return null
   const today = new Date()
@@ -49,6 +53,7 @@ function buildBirthdayList(staff) {
     .map(p => {
       const next = nextBirthday(p.date_of_birth)
       if (!next) return null
+      const dob = new Date(p.date_of_birth)
       const name = `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown Staff'
       const monthDay = `${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`
       return {
@@ -57,6 +62,8 @@ function buildBirthdayList(staff) {
         centre: p.centre || 'No Centre',
         photoUrl: normalizePhotoUrl(p.photo_url),
         nextDate: next,
+        dobMonth: dob.getMonth(),
+        dobDay: dob.getDate(),
         displayDate: next.toLocaleDateString('en-NZ', { weekday: 'short', month: 'short', day: 'numeric' }),
         threadKey: `birthday:${p.id}:${monthDay}`,
       }
@@ -106,6 +113,75 @@ function buildAnniversaryList(staff) {
     .sort((a, b) => a.nextDate - b.nextDate)
 }
 
+function BirthdayMiniCalendar({ people, month, onMonthChange, onDayClick }) {
+  const [hoveredDay, setHoveredDay] = useState(null)
+  const [hoveredPeople, setHoveredPeople] = useState([])
+
+  const year = month.getFullYear()
+  const monthNum = month.getMonth()
+  const firstDay = new Date(year, monthNum, 1)
+  const startDate = new Date(firstDay)
+  startDate.setDate(startDate.getDate() - firstDay.getDay())
+
+  const days = []
+  let current = new Date(startDate)
+  while (days.length < 42) {
+    days.push(new Date(current))
+    current.setDate(current.getDate() + 1)
+  }
+
+  function peopleForDay(day) {
+    return people.filter(p => p.dobMonth === day.getMonth() && p.dobDay === day.getDate())
+  }
+
+  const monthName = month.toLocaleString('en-NZ', { month: 'long', year: 'numeric' })
+  const today = new Date()
+
+  return (
+    <div className="monthly-calendar birthday-mini-calendar">
+      <div className="calendar-header">
+        <button onClick={() => onMonthChange(new Date(year, monthNum - 1, 1))} className="calendar-nav"><ChevronLeft size={18}/></button>
+        <h3>{monthName}</h3>
+        <button onClick={() => onMonthChange(new Date(year, monthNum + 1, 1))} className="calendar-nav"><ChevronRight size={18}/></button>
+      </div>
+
+      <div className="calendar-weekdays">
+        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      </div>
+
+      <div className="calendar-days">
+        {days.map((day, i) => {
+          const isCurrentMonth = day.getMonth() === monthNum
+          const dayPeople = peopleForDay(day)
+          const hasBirthday = dayPeople.length > 0
+          const isToday = isSameCalendarDay(day, today)
+
+          return (
+            <div
+              key={i}
+              className={`calendar-day ${isCurrentMonth ? '' : 'other-month'} ${hasBirthday ? 'has-event clickable' : ''} ${isToday ? 'today' : ''}`}
+              onMouseEnter={() => { if (hasBirthday) { setHoveredDay(day); setHoveredPeople(dayPeople) } }}
+              onMouseLeave={() => setHoveredDay(null)}
+              onClick={() => hasBirthday && onDayClick(dayPeople[0])}
+            >
+              <span>{day.getDate()}</span>
+              {hasBirthday && <div className="event-dot"></div>}
+            </div>
+          )
+        })}
+      </div>
+
+      {hoveredDay && hoveredPeople.length > 0 && (
+        <div className="calendar-tooltip">
+          <div className="tooltip-date">{hoveredDay.toLocaleDateString('en-NZ', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+          {hoveredPeople.map(p => <div key={p.id} className="tooltip-event">{p.name}</div>)}
+          <div className="tooltip-hint">Click to jump to them</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function CelebrationsPage({ currentProfile, type = 'birthdays', staff = [], onBack }) {
   const isBirthday = type === 'birthdays'
   const title = isBirthday ? 'Birthdays' : 'Anniversaries'
@@ -118,6 +194,11 @@ export function CelebrationsPage({ currentProfile, type = 'birthdays', staff = [
   const [loadingThread, setLoadingThread] = useState('')
   const [sendingThread, setSendingThread] = useState('')
   const [draftByThread, setDraftByThread] = useState({})
+  const [calendarMonth, setCalendarMonth] = useState(new Date())
+
+  function scrollToPerson(person) {
+    document.getElementById(`celebration-${person.threadKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
   const [brokenPhotoKeys, setBrokenPhotoKeys] = useState(new Set())
 
   async function loadComments(threadKey) {
@@ -221,14 +302,16 @@ export function CelebrationsPage({ currentProfile, type = 'birthdays', staff = [
       {people.length === 0 ? (
         <div className="staff-empty">No {isBirthday ? 'birthday' : 'anniversary'} records found yet.</div>
       ) : (
+        <div className={isBirthday ? 'celebrations-layout' : ''}>
         <div className="celebration-cards">
           {people.map(person => {
             const comments = commentsByThread[person.threadKey] || []
             const isOpen = openThread === person.threadKey
             const showPhoto = Boolean(person.photoUrl) && !brokenPhotoKeys.has(person.threadKey)
+            const isTodayBirthday = !isBirthday || isSameCalendarDay(person.nextDate, new Date())
 
             return (
-              <article key={person.threadKey} className="celebration-card">
+              <article key={person.threadKey} id={`celebration-${person.threadKey}`} className="celebration-card">
                 <div className="celebration-person-head">
                   {showPhoto ? (
                     <img
@@ -251,12 +334,17 @@ export function CelebrationsPage({ currentProfile, type = 'birthdays', staff = [
                     <p>{person.centre}</p>
                     <small>{isBirthday ? person.displayDate : `${person.displayDate} • Next on ${person.subtitle}`}</small>
                   </div>
-                  <button className="btn-secondary" onClick={() => toggleThread(person.threadKey)}>
-                    {isOpen ? 'Hide comments' : 'Open comments'}
+                  <button
+                    className="btn-secondary"
+                    onClick={() => isTodayBirthday && toggleThread(person.threadKey)}
+                    disabled={!isTodayBirthday}
+                    title={!isTodayBirthday ? `Comments open on ${person.name.split(' ')[0]}'s birthday` : undefined}
+                  >
+                    {!isTodayBirthday ? 'Opens on their birthday' : isOpen ? 'Hide comments' : 'Open comments'}
                   </button>
                 </div>
 
-                {isOpen && (
+                {isOpen && isTodayBirthday && (
                   <div className="celebration-comments">
                     {loadingThread === person.threadKey ? (
                       <div className="staff-loading">Loading comments…</div>
@@ -296,6 +384,17 @@ export function CelebrationsPage({ currentProfile, type = 'birthdays', staff = [
               </article>
             )
           })}
+        </div>
+        {isBirthday && (
+          <aside className="celebrations-sidebar">
+            <BirthdayMiniCalendar
+              people={people}
+              month={calendarMonth}
+              onMonthChange={setCalendarMonth}
+              onDayClick={scrollToPerson}
+            />
+          </aside>
+        )}
         </div>
       )}
     </div>

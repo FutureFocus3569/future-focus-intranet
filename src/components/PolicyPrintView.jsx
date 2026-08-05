@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { X, Printer } from 'lucide-react'
 import { parseFlatTextToBlocks } from '../lib/policyReview.js'
 
@@ -38,14 +39,13 @@ export function PolicyPrintView({ doc, onClose }) {
     : parseFlatTextToBlocks(doc.extracted_text)
   const groups = groupBlocks(blocks)
 
-  return (
+  return createPortal(
     <div className="policy-print-overlay" onClick={onClose}>
       <div className="policy-print-toolbar">
         <button type="button" className="btn-secondary" onClick={onClose}><X size={16} /> Close</button>
         <button type="button" className="btn-primary" onClick={() => window.print()}><Printer size={16} /> Print</button>
       </div>
       <div className="policy-print-page" onClick={e => e.stopPropagation()}>
-        <img src="/logo-policy.png" alt="" aria-hidden="true" className="policy-print-watermark" />
         <div className="policy-print-header">
           <h1>{doc.title}</h1>
           <img src="/logo-policy.png" alt="Future Focus" />
@@ -97,6 +97,7 @@ export function PolicyPrintView({ doc, onClose }) {
           </tbody>
         </table>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

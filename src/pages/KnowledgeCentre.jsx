@@ -748,6 +748,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
+  const [includeArchived, setIncludeArchived] = useState(false)
   const [filterCategory, setFilterCategory] = useState('all')
 
   // Modals
@@ -767,7 +768,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
   }, [filterStatus, filterCategory])
 
   useEffect(() => {
-    if (activeTab === 'queries' && canManage) loadQueryLog()
+    if (activeTab === 'queries' && isSuperAdmin) loadQueryLog()
     if (activeTab === 'policy-review' && canManage) loadPolicyReviewData()
   }, [activeTab])
 
@@ -776,7 +777,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
     try {
       const { data } = await supabase
         .from('ai_query_log')
-        .select('id, question, created_at, user_id')
+        .select('id, question, created_at, user_id, profiles(first_name, last_name)')
         .order('created_at', { ascending: false })
         .limit(100)
       setQueryLog(data || [])
@@ -1027,6 +1028,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
 
   // Filter by search query client-side
   const filtered = documents.filter(doc => {
+    if (filterStatus === 'all' && !includeArchived && doc.status === DOCUMENT_STATUS.ARCHIVED) return false
     if (!searchQuery.trim()) return true
     const q = searchQuery.toLowerCase()
     return (
@@ -1131,18 +1133,24 @@ export function KnowledgeCentrePage({ currentProfile }) {
         )}
       </div>
 
-      {/* Tabs — only super_admin sees query log */}
+      {/* Staff/centre leaders get the Documents list with no tab bar (view
+          only, via the default activeTab). AI Query Log is super_admin
+          only, Policy Review is super_admin/policy_admin only. */}
       {canManage && (
         <div className="kc-tabs">
           <button className={`kc-tab${activeTab === 'documents' ? ' kc-tab-active' : ''}`} onClick={() => setActiveTab('documents')}>
             <FileText size={14} /> Documents
           </button>
-          <button className={`kc-tab${activeTab === 'queries' ? ' kc-tab-active' : ''}`} onClick={() => setActiveTab('queries')}>
-            <Search size={14} /> AI Query Log
-          </button>
-          <button className={`kc-tab${activeTab === 'policy-review' ? ' kc-tab-active' : ''}`} onClick={() => setActiveTab('policy-review')}>
-            <BookOpen size={14} /> Policy Review
-          </button>
+          {isSuperAdmin && (
+            <button className={`kc-tab${activeTab === 'queries' ? ' kc-tab-active' : ''}`} onClick={() => setActiveTab('queries')}>
+              <Search size={14} /> AI Query Log
+            </button>
+          )}
+          {canManage && (
+            <button className={`kc-tab${activeTab === 'policy-review' ? ' kc-tab-active' : ''}`} onClick={() => setActiveTab('policy-review')}>
+              <BookOpen size={14} /> Policy Review
+            </button>
+          )}
         </div>
       )}
 
@@ -1153,14 +1161,18 @@ export function KnowledgeCentrePage({ currentProfile }) {
           ) : queryLog.length === 0 ? (
             <div className="kc-empty"><strong>No queries yet</strong><small>Staff questions will appear here once they use FF AI.</small></div>
           ) : (
-            queryLog.map(q => (
-              <div key={q.id} className="kc-query-row">
-                <div className="kc-query-q">"{q.question}"</div>
-                <div className="kc-query-meta">
-                  {new Date(q.created_at).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            queryLog.map(q => {
+              const askedBy = [q.profiles?.first_name, q.profiles?.last_name].filter(Boolean).join(' ') || 'Unknown staff member'
+              return (
+                <div key={q.id} className="kc-query-row">
+                  <div className="kc-query-q">"{q.question}"</div>
+                  <div className="kc-query-meta">
+                    <span className="kc-query-author">{askedBy}</span>
+                    <span>{new Date(q.created_at).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
                 </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       ) : activeTab === 'policy-review' ? (
@@ -1326,6 +1338,12 @@ export function KnowledgeCentrePage({ currentProfile }) {
           </select>
           <ChevronDown size={14} className="kc-select-icon" />
         </div>
+        {filterStatus === 'all' && (
+          <label className="kc-include-archived">
+            <input type="checkbox" checked={includeArchived} onChange={e => setIncludeArchived(e.target.checked)} />
+            Include archived
+          </label>
+        )}
       </div>
 
       {/* Error banner */}

@@ -244,6 +244,11 @@ function EditEventModal({ event, onClose, onSaved, callerProfile }) {
   )
 }
 
+function getEventAuthor(event) {
+  const name = [event.profiles?.first_name, event.profiles?.last_name].filter(Boolean).join(' ')
+  return name || null
+}
+
 function formatTime(t) {
   if (!t) return ''
   const [h, m] = t.split(':')
@@ -288,7 +293,7 @@ export function EventsPage({ currentProfile }) {
 
   async function loadEvents() {
     setLoading(true)
-    const { data } = await supabase.from('events').select('*').order('date').order('start_time')
+    const { data } = await supabase.from('events').select('*, profiles(first_name, last_name)').order('date').order('start_time')
     setEvents(data || [])
     setLoading(false)
   }
@@ -404,6 +409,9 @@ export function EventsPage({ currentProfile }) {
                                   >
                                     {event.centre || 'All Centres'}
                                   </span>
+                                  {getEventAuthor(event) && (
+                                    <span className="event-author">Posted by {getEventAuthor(event)}</span>
+                                  )}
                                 </div>
                                 {event.description && <p className="event-desc">{event.description}</p>}
                               </div>
@@ -462,6 +470,9 @@ export function EventsPage({ currentProfile }) {
                                     >
                                       {event.centre || 'All Centres'}
                                     </span>
+                                    {getEventAuthor(event) && (
+                                      <span className="event-author">Posted by {getEventAuthor(event)}</span>
+                                    )}
                                   </div>
                                   {event.description && <p className="event-desc">{event.description}</p>}
                                 </div>
@@ -536,6 +547,9 @@ export function EventsPage({ currentProfile }) {
                         >
                           {event.centre || 'All Centres'}
                         </span>
+                        {getEventAuthor(event) && (
+                          <span className="event-author">Posted by {getEventAuthor(event)}</span>
+                        )}
                       </div>
                       {event.description && <p className="event-desc">{event.description}</p>}
                     </div>

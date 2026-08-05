@@ -49,7 +49,7 @@ const quickLinks = [
 const topCards = [
   { icon: Leaf, title: "WHAT'S HAPPENING", text: 'Leadership updates, celebrations and company news.', tone: 'green', link: 'View', page: "What's Happening" },
   { icon: Users, title: 'YOUR CENTRE', text: 'Occupancy, staffing, roster percentage and important actions.', tone: 'blue', link: 'View', page: null },
-  { icon: BookOpen, title: 'PĀTAKA KAI', text: 'Learning, resources, PD and professional development.', tone: 'mint', link: 'View', page: null },
+  { icon: BookOpen, title: 'PĀTAKA MĀTAURANGA', text: 'Learning, resources, PD and professional development.', tone: 'mint', link: 'View', page: null },
   { icon: MessageCircle, title: 'ASK FUTURE FOCUS', text: 'Search policies and get answers instantly.', tone: 'purple', link: 'Ask Now', page: 'FF AI' },
 ];
 
@@ -205,12 +205,10 @@ function Sidebar({ open, onClose, page, setPage, canManageStaff, profile }) {
               <Users size={19} strokeWidth={1.9} /> <span>Staff</span>
             </button>
           )}
-          {(profile?.permission === 'super_admin' || profile?.permission === 'policy_admin') && (
-            <button className={`nav-item ${page === 'Knowledge Centre' ? 'active' : ''}`}
-              onClick={() => { setPage('Knowledge Centre'); onClose(); }}>
-              <BookOpen size={19} strokeWidth={1.9} /> <span>Knowledge Centre</span>
-            </button>
-          )}
+          <button className={`nav-item ${page === 'Knowledge Centre' ? 'active' : ''}`}
+            onClick={() => { setPage('Knowledge Centre'); onClose(); }}>
+            <BookOpen size={19} strokeWidth={1.9} /> <span>Knowledge Centre</span>
+          </button>
         </nav>
         <div className="nav-divider" />
         <button className="quick-links-toggle" onClick={() => setQuickLinksOpen(o => !o)}>
@@ -971,7 +969,7 @@ function App(){
           <AskFutureFocusPage currentProfile={profile} />
         ) : page === 'Policies for Review' ? (
           <PoliciesForReviewPage currentProfile={profile} />
-        ) : page === 'Knowledge Centre' && (profile?.permission === 'super_admin' || profile?.permission === 'policy_admin') ? (
+        ) : page === 'Knowledge Centre' ? (
           <KnowledgeCentrePage currentProfile={profile} />
         ) : (
           <>
