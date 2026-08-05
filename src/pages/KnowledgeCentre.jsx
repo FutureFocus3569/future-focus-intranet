@@ -1068,6 +1068,10 @@ export function KnowledgeCentrePage({ currentProfile }) {
   }
 
   async function handleView(doc) {
+    if (Array.isArray(doc.content_blocks) && doc.content_blocks.length > 0) {
+      setShowPrintView(doc)
+      return
+    }
     try {
       const { signedUrl } = await getSignedUrl(doc.storage_path)
       window.open(signedUrl, '_blank', 'noopener,noreferrer')
