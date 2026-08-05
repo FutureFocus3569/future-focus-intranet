@@ -47,7 +47,7 @@ import {
   uploadDocumentFile,
   getSignedUrl,
 } from '../lib/documentService.js'
-import { calculateNextReviewDate, calculateFeedbackOpenDate, parseFlatTextToBlocks } from '../lib/policyReview.js'
+import { calculateNextReviewDate, calculateFeedbackOpenDate, parseFlatTextToBlocks, extractPolicyFooterMetadata } from '../lib/policyReview.js'
 import { PolicyPrintView } from '../components/PolicyPrintView.jsx'
 
 // ──────────────────────────────────────────────────────────
@@ -864,14 +864,14 @@ export function KnowledgeCentrePage({ currentProfile }) {
       const fullDoc = await getDocument(analysisPolicy.id)
       setAnalysisPolicy(fullDoc)
       const frequency = Number(fullDoc.review_frequency_months || 12)
-      const blocks = Array.isArray(fullDoc.content_blocks) && fullDoc.content_blocks.length > 0
-        ? fullDoc.content_blocks
-        : parseFlatTextToBlocks(fullDoc.extracted_text)
+      const hasStructuredBlocks = Array.isArray(fullDoc.content_blocks) && fullDoc.content_blocks.length > 0
+      const footer = hasStructuredBlocks ? null : extractPolicyFooterMetadata(fullDoc.extracted_text)
+      const blocks = hasStructuredBlocks ? fullDoc.content_blocks : parseFlatTextToBlocks(fullDoc.extracted_text)
       setOriginalPolicyBlocks(blocks)
       setNewPolicyBlocks(blocks.length > 0 ? blocks : [{ lead: '', text: '' }])
       setNewPolicyFrequency(frequency)
       setNewPolicyCategory(fullDoc.category || '')
-      setNewPolicyLicensingCriteria(fullDoc.licensing_criteria || '')
+      setNewPolicyLicensingCriteria(fullDoc.licensing_criteria || footer?.licensingCriteria || '')
       setShowCreateVersionModal(true)
     } catch (err) {
       setCreateVersionError(err.message || 'Could not load the full policy for editing.')

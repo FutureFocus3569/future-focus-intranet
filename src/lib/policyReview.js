@@ -1,10 +1,40 @@
+// Older uploaded policy PDFs often had a metadata footer ("Policy Category:
+// ... Licensing Criteria: ... Date adapted: ... Next review date: ...")
+// tacked onto the end with no separator from the last bullet, since it's a
+// document footer, not a list item. This pulls it out (and the category /
+// licensing criteria values out of it) so it doesn't get mistaken for a
+// bullet when auto-splitting legacy text.
+export function extractPolicyFooterMetadata(text) {
+  const source = text || ''
+  const match = source.match(/Policy Category:\s*/i)
+
+  if (!match) {
+    return { cleanedText: source.trim(), category: '', licensingCriteria: '' }
+  }
+
+  const footerStart = match.index
+  const cleanedText = source.slice(0, footerStart).trim()
+  const footer = source.slice(footerStart)
+
+  const categoryMatch = footer.match(/Policy Category:\s*([^]*?)\s*(?:Licensing Criteria:|Date adapted:|Next review date:|$)/i)
+  const licensingMatch = footer.match(/Licensing Criteria:\s*([^]*?)\s*(?:Date adapted:|Next review date:|$)/i)
+
+  return {
+    cleanedText,
+    category: categoryMatch ? categoryMatch[1].trim() : '',
+    licensingCriteria: licensingMatch ? licensingMatch[1].trim() : '',
+  }
+}
+
 // Best-effort one-time conversion from a legacy flat-text policy into
 // structured {lead, text} bullet blocks, splitting on the "•" markers left
 // over from PDF extraction. Bold lead-ins can't be reliably guessed from
 // flat text, so lead starts empty — the user separates it out once, and it
-// stays structured from then on.
+// stays structured from then on. Any trailing metadata footer is stripped
+// first so it doesn't end up glued onto the last bullet.
 export function parseFlatTextToBlocks(text) {
-  const cleaned = (text || '').replace(/[ \t]{2,}/g, ' ').trim()
+  const { cleanedText } = extractPolicyFooterMetadata(text)
+  const cleaned = cleanedText.replace(/[ \t]{2,}/g, ' ').trim()
   if (!cleaned) return []
 
   const parts = cleaned.split(/\s*•\s*/).map(part => part.trim()).filter(Boolean)
