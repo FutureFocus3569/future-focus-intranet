@@ -26,12 +26,12 @@ export function extractPolicyFooterMetadata(text) {
   }
 }
 
-// Best-effort one-time conversion from a legacy flat-text policy into
-// structured {lead, text} bullet blocks, splitting on the "•" markers left
-// over from PDF extraction. Bold lead-ins can't be reliably guessed from
-// flat text, so lead starts empty — the user separates it out once, and it
-// stays structured from then on. Any trailing metadata footer is stripped
-// first so it doesn't end up glued onto the last bullet.
+// Fallback, non-AI conversion from legacy flat text into structured blocks —
+// splits on "•" markers left over from PDF extraction. Used when the AI
+// structuring call (requestPolicyStructure) fails or hasn't been run yet.
+// Bold lead-ins can't be reliably guessed from flat text, so lead starts
+// empty. Any trailing metadata footer is stripped first so it doesn't end
+// up glued onto the last bullet.
 export function parseFlatTextToBlocks(text) {
   const { cleanedText } = extractPolicyFooterMetadata(text)
   const cleaned = cleanedText.replace(/[ \t]{2,}/g, ' ').trim()
@@ -40,19 +40,44 @@ export function parseFlatTextToBlocks(text) {
   const parts = cleaned.split(/\s*•\s*/).map(part => part.trim()).filter(Boolean)
   if (parts.length === 0) return []
 
-  return parts.map(part => ({ lead: '', text: part }))
+  return parts.map(part => ({ type: 'bullet', lead: '', text: part }))
 }
 
-// Flattens structured bullet blocks back into plain text, used as the
+// Calls the policy-structure-extract edge function, which uses AI to split
+// legacy flat policy text into heading/paragraph/bullet blocks without
+// changing any wording — adapting to each document's actual layout instead
+// of assuming every policy is a flat bullet list. Falls back to the local
+// bullet-splitter on any failure so the editor never blocks.
+export async function requestPolicyStructure(supabase, { text, title }) {
+  const { cleanedText } = extractPolicyFooterMetadata(text)
+  if (!cleanedText.trim()) return []
+
+  try {
+    const { data, error } = await supabase.functions.invoke('policy-structure-extract', {
+      body: { text: cleanedText, title },
+    })
+    if (error) throw error
+    if (Array.isArray(data?.blocks) && data.blocks.length > 0) return data.blocks
+  } catch {
+    // fall through to local fallback
+  }
+  return parseFlatTextToBlocks(text)
+}
+
+// Flattens structured blocks back into plain text, used as the
 // extracted_text fallback (e.g. for the FF AI assistant's policy search,
-// which reads extracted_text directly).
+// which reads extracted_text directly). Blocks without a "type" (older
+// saved policies) are treated as bullets for backwards compatibility.
 export function blocksToPlainText(blocks) {
   if (!Array.isArray(blocks) || blocks.length === 0) return ''
   return blocks
     .map(block => {
+      const type = block?.type || 'bullet'
       const lead = (block?.lead || '').trim()
       const text = (block?.text || '').trim()
       if (!lead && !text) return null
+      if (type === 'heading') return text
+      if (type === 'paragraph') return text
       return lead ? `${lead} – ${text}` : text
     })
     .filter(Boolean)

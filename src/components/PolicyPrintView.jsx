@@ -9,12 +9,34 @@ function formatPrintDate(value) {
   return date.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+// Groups consecutive bullet blocks into a single list, so the print output
+// reads as proper heading/paragraph/list sections instead of one item per
+// block regardless of type.
+function groupBlocks(blocks) {
+  const groups = []
+  for (const block of blocks) {
+    const type = block.type || 'bullet'
+    const last = groups[groups.length - 1]
+    if (type === 'bullet') {
+      if (last?.type === 'bullet-list') {
+        last.items.push(block)
+      } else {
+        groups.push({ type: 'bullet-list', items: [block] })
+      }
+    } else {
+      groups.push({ type, text: block.text })
+    }
+  }
+  return groups
+}
+
 export function PolicyPrintView({ doc, onClose }) {
   if (!doc) return null
 
   const blocks = Array.isArray(doc.content_blocks) && doc.content_blocks.length > 0
     ? doc.content_blocks
     : parseFlatTextToBlocks(doc.extracted_text)
+  const groups = groupBlocks(blocks)
 
   return (
     <div className="policy-print-overlay" onClick={onClose}>
@@ -28,17 +50,29 @@ export function PolicyPrintView({ doc, onClose }) {
           <img src="/logo.png" alt="Future Focus" />
         </div>
 
-        {blocks.length === 0 ? (
+        {groups.length === 0 ? (
           <p className="policy-print-empty">No content has been added to this policy yet.</p>
         ) : (
-          <ul className="policy-print-bullets">
-            {blocks.map((block, index) => (
-              <li key={index}>
-                {block.lead ? <strong>{block.lead}{block.text ? ' – ' : ''}</strong> : null}
-                {block.text}
-              </li>
-            ))}
-          </ul>
+          <div className="policy-print-body">
+            {groups.map((group, index) => {
+              if (group.type === 'heading') {
+                return <h2 key={index} className="policy-print-heading">{group.text}</h2>
+              }
+              if (group.type === 'paragraph') {
+                return <p key={index} className="policy-print-paragraph">{group.text}</p>
+              }
+              return (
+                <ul key={index} className="policy-print-bullets">
+                  {group.items.map((block, itemIndex) => (
+                    <li key={itemIndex}>
+                      {block.lead ? <strong>{block.lead}{block.text ? ' – ' : ''}</strong> : null}
+                      {block.text}
+                    </li>
+                  ))}
+                </ul>
+              )
+            })}
+          </div>
         )}
 
         <table className="policy-print-meta">

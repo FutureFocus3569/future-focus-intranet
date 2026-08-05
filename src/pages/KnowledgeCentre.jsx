@@ -47,7 +47,7 @@ import {
   uploadDocumentFile,
   getSignedUrl,
 } from '../lib/documentService.js'
-import { calculateNextReviewDate, calculateFeedbackOpenDate, parseFlatTextToBlocks, extractPolicyFooterMetadata } from '../lib/policyReview.js'
+import { calculateNextReviewDate, calculateFeedbackOpenDate, requestPolicyStructure, extractPolicyFooterMetadata } from '../lib/policyReview.js'
 import { PolicyPrintView } from '../components/PolicyPrintView.jsx'
 
 // ──────────────────────────────────────────────────────────
@@ -731,6 +731,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
   const [analysisError, setAnalysisError] = useState('')
   const [showCreateVersionModal, setShowCreateVersionModal] = useState(false)
   const [newPolicyBlocks, setNewPolicyBlocks] = useState([])
+  const [structuringPolicy, setStructuringPolicy] = useState(false)
   const [newPolicyFrequency, setNewPolicyFrequency] = useState(12)
   const [newPolicyCategory, setNewPolicyCategory] = useState('')
   const [newPolicyLicensingCriteria, setNewPolicyLicensingCriteria] = useState('')
@@ -866,13 +867,24 @@ export function KnowledgeCentrePage({ currentProfile }) {
       const frequency = Number(fullDoc.review_frequency_months || 12)
       const hasStructuredBlocks = Array.isArray(fullDoc.content_blocks) && fullDoc.content_blocks.length > 0
       const footer = hasStructuredBlocks ? null : extractPolicyFooterMetadata(fullDoc.extracted_text)
-      const blocks = hasStructuredBlocks ? fullDoc.content_blocks : parseFlatTextToBlocks(fullDoc.extracted_text)
-      setOriginalPolicyBlocks(blocks)
-      setNewPolicyBlocks(blocks.length > 0 ? blocks : [{ lead: '', text: '' }])
       setNewPolicyFrequency(frequency)
       setNewPolicyCategory(fullDoc.category || '')
       setNewPolicyLicensingCriteria(fullDoc.licensing_criteria || footer?.licensingCriteria || '')
       setShowCreateVersionModal(true)
+      setCreatingVersion(false)
+
+      if (hasStructuredBlocks) {
+        setOriginalPolicyBlocks(fullDoc.content_blocks)
+        setNewPolicyBlocks(fullDoc.content_blocks)
+        return
+      }
+
+      setStructuringPolicy(true)
+      const blocks = await requestPolicyStructure(supabase, { text: fullDoc.extracted_text, title: fullDoc.title })
+      setOriginalPolicyBlocks(blocks)
+      setNewPolicyBlocks(blocks.length > 0 ? blocks : [{ type: 'bullet', lead: '', text: '' }])
+      setStructuringPolicy(false)
+      return
     } catch (err) {
       setCreateVersionError(err.message || 'Could not load the full policy for editing.')
     }
@@ -880,15 +892,15 @@ export function KnowledgeCentrePage({ currentProfile }) {
   }
 
   function resetDraftToCurrentPolicy() {
-    setNewPolicyBlocks(originalPolicyBlocks.length > 0 ? originalPolicyBlocks : [{ lead: '', text: '' }])
+    setNewPolicyBlocks(originalPolicyBlocks.length > 0 ? originalPolicyBlocks : [{ type: 'bullet', lead: '', text: '' }])
   }
 
   function updatePolicyBlock(index, field, value) {
     setNewPolicyBlocks(blocks => blocks.map((block, i) => (i === index ? { ...block, [field]: value } : block)))
   }
 
-  function addPolicyBlock() {
-    setNewPolicyBlocks(blocks => [...blocks, { lead: '', text: '' }])
+  function addPolicyBlock(type) {
+    setNewPolicyBlocks(blocks => [...blocks, { type, lead: '', text: '' }])
   }
 
   function removePolicyBlock(index) {
@@ -909,12 +921,12 @@ export function KnowledgeCentrePage({ currentProfile }) {
     if (!analysisPolicy) return
 
     const cleanedBlocks = newPolicyBlocks
-      .map(block => ({ lead: (block.lead || '').trim(), text: (block.text || '').trim() }))
+      .map(block => ({ type: block.type || 'bullet', lead: (block.lead || '').trim(), text: (block.text || '').trim() }))
       .filter(block => block.lead || block.text)
     const frequency = Number(newPolicyFrequency)
 
     if (cleanedBlocks.length === 0) {
-      setCreateVersionError('Please add at least one bullet point before creating a new version.')
+      setCreateVersionError('Please add at least one paragraph, heading, or bullet before creating a new version.')
       return
     }
 
@@ -1553,51 +1565,81 @@ export function KnowledgeCentrePage({ currentProfile }) {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13, color: '#35505d', fontWeight: 600 }}>
-                  Policy points (each becomes a bullet in the published policy)
+                  Policy content
                 </span>
-                <button type="button" className="btn-secondary" onClick={resetDraftToCurrentPolicy} disabled={creatingVersion || originalPolicyBlocks.length === 0}>
+                <button type="button" className="btn-secondary" onClick={resetDraftToCurrentPolicy} disabled={creatingVersion || structuringPolicy || originalPolicyBlocks.length === 0}>
                   Reset to Current
                 </button>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {newPolicyBlocks.map((block, index) => (
-                  <div key={index} style={{ border: '1px solid #d8e3e9', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, background: '#fbfdfd' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#8fa3ad', letterSpacing: '.3px' }}>BULLET {index + 1}</span>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button type="button" className="btn-icon-edit" title="Move up" onClick={() => movePolicyBlock(index, -1)} disabled={creatingVersion || index === 0}>
-                          <ChevronUp size={14} />
-                        </button>
-                        <button type="button" className="btn-icon-edit" title="Move down" onClick={() => movePolicyBlock(index, 1)} disabled={creatingVersion || index === newPolicyBlocks.length - 1}>
-                          <ChevronDown size={14} />
-                        </button>
-                        <button type="button" className="btn-icon-danger" title="Remove bullet" onClick={() => removePolicyBlock(index)} disabled={creatingVersion}>
-                          <Trash2 size={14} />
-                        </button>
+              {structuringPolicy ? (
+                <div style={{ padding: '32px 12px', textAlign: 'center', color: '#4a5f6b', fontSize: 13, border: '1px dashed #d8e3e9', borderRadius: 10 }}>
+                  Reading this policy's layout with AI — splitting it into headings, paragraphs and bullets without changing any wording…
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {newPolicyBlocks.map((block, index) => {
+                    const type = block.type || 'bullet'
+                    const typeLabel = type === 'heading' ? 'HEADING' : type === 'paragraph' ? 'PARAGRAPH' : 'BULLET'
+                    return (
+                      <div key={index} style={{ border: '1px solid #d8e3e9', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, background: '#fbfdfd' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#8fa3ad', letterSpacing: '.3px' }}>{typeLabel}</span>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button type="button" className="btn-icon-edit" title="Move up" onClick={() => movePolicyBlock(index, -1)} disabled={creatingVersion || index === 0}>
+                              <ChevronUp size={14} />
+                            </button>
+                            <button type="button" className="btn-icon-edit" title="Move down" onClick={() => movePolicyBlock(index, 1)} disabled={creatingVersion || index === newPolicyBlocks.length - 1}>
+                              <ChevronDown size={14} />
+                            </button>
+                            <button type="button" className="btn-icon-danger" title="Remove" onClick={() => removePolicyBlock(index)} disabled={creatingVersion}>
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        {type === 'bullet' && (
+                          <input
+                            value={block.lead}
+                            onChange={e => updatePolicyBlock(index, 'lead', e.target.value)}
+                            disabled={creatingVersion}
+                            placeholder="Bold lead-in (optional) — e.g. Information concerning your child"
+                            style={{ border: '1px solid #d8e3e9', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontWeight: 700, color: '#0d2b36' }}
+                          />
+                        )}
+                        {type === 'heading' ? (
+                          <input
+                            value={block.text}
+                            onChange={e => updatePolicyBlock(index, 'text', e.target.value)}
+                            disabled={creatingVersion}
+                            placeholder="Section heading"
+                            style={{ border: '1px solid #d8e3e9', borderRadius: 8, padding: '8px 10px', fontSize: 14, fontWeight: 700, color: '#0d2b36' }}
+                          />
+                        ) : (
+                          <textarea
+                            value={block.text}
+                            onChange={e => updatePolicyBlock(index, 'text', e.target.value)}
+                            disabled={creatingVersion}
+                            rows={type === 'paragraph' ? 4 : 3}
+                            placeholder={type === 'paragraph' ? 'Paragraph text' : 'Bullet text'}
+                            style={{ width: '100%', border: '1px solid #d8e3e9', borderRadius: 8, padding: '8px 10px', fontSize: 13, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical' }}
+                          />
+                        )}
                       </div>
-                    </div>
-                    <input
-                      value={block.lead}
-                      onChange={e => updatePolicyBlock(index, 'lead', e.target.value)}
-                      disabled={creatingVersion}
-                      placeholder="Bold lead-in (optional) — e.g. Information concerning your child"
-                      style={{ border: '1px solid #d8e3e9', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontWeight: 700, color: '#0d2b36' }}
-                    />
-                    <textarea
-                      value={block.text}
-                      onChange={e => updatePolicyBlock(index, 'text', e.target.value)}
-                      disabled={creatingVersion}
-                      rows={3}
-                      placeholder="Bullet text"
-                      style={{ width: '100%', border: '1px solid #d8e3e9', borderRadius: 8, padding: '8px 10px', fontSize: 13, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical' }}
-                    />
+                    )
+                  })}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button type="button" className="btn-secondary" onClick={() => addPolicyBlock('heading')} disabled={creatingVersion}>
+                      <Plus size={14} /> Add Heading
+                    </button>
+                    <button type="button" className="btn-secondary" onClick={() => addPolicyBlock('paragraph')} disabled={creatingVersion}>
+                      <Plus size={14} /> Add Paragraph
+                    </button>
+                    <button type="button" className="btn-secondary" onClick={() => addPolicyBlock('bullet')} disabled={creatingVersion}>
+                      <Plus size={14} /> Add Bullet
+                    </button>
                   </div>
-                ))}
-                <button type="button" className="btn-secondary" onClick={addPolicyBlock} disabled={creatingVersion} style={{ alignSelf: 'flex-start' }}>
-                  <Plus size={14} /> Add Bullet
-                </button>
-              </div>
+                </div>
+              )}
               {createVersionError && (
                 <div className="form-error" style={{ display: 'flex', gap: 8 }}>
                   <AlertCircle size={14} />{createVersionError}
@@ -1608,7 +1650,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
               <button className="btn-secondary" onClick={() => setShowCreateVersionModal(false)} disabled={creatingVersion}>
                 Cancel
               </button>
-              <button className="btn-primary" onClick={handleCreatePolicyVersion} disabled={creatingVersion}>
+              <button className="btn-primary" onClick={handleCreatePolicyVersion} disabled={creatingVersion || structuringPolicy}>
                 {creatingVersion ? 'Saving Version...' : 'Save & Replace Current Policy'}
               </button>
             </div>
