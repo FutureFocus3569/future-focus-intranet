@@ -1528,7 +1528,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
             </div>
             <div style={{ padding: 24, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ border: '1px solid #dbe5ea', borderRadius: 10, padding: '12px 14px', background: '#f8fbfc', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <img src="/logo.png" alt="Future Focus" style={{ width: 120, height: 'auto', display: 'block' }} />
+                <img src="/logo-policy.png" alt="Future Focus" style={{ width: 160, height: 'auto', display: 'block' }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <strong style={{ fontSize: 14, color: '#16303b' }}>{analysisPolicy.title}</strong>
                   <span style={{ fontSize: 12, color: '#4a5f6b' }}>Review staff feedback, then edit the policy text below.</span>

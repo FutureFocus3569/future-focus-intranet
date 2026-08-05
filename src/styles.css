@@ -746,7 +746,7 @@ button{cursor:pointer}
 .policy-print-watermark{position:absolute;top:50%;left:50%;width:65%;transform:translate(-50%,-50%);opacity:.06;z-index:-1;pointer-events:none}
 .policy-print-header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;border-bottom:2px solid #1a6eb5;padding-bottom:16px;margin-bottom:28px}
 .policy-print-header h1{font-size:22px;font-weight:700;color:#1a6eb5;margin:0;line-height:1.3}
-.policy-print-header img{width:110px;height:auto;flex-shrink:0}
+.policy-print-header img{width:180px;height:auto;flex-shrink:0}
 .policy-print-empty{color:#8fa3ad;font-size:14px}
 .policy-print-body{display:flex;flex-direction:column;gap:16px;margin-bottom:32px}
 .policy-print-heading{font-size:16px;font-weight:700;color:#16303b;margin:8px 0 0}
@@ -762,7 +762,7 @@ button{cursor:pointer}
 @media print{
   body *{visibility:hidden}
   .policy-print-overlay,.policy-print-overlay *{visibility:visible}
-  .policy-print-overlay{position:absolute;inset:auto;background:#fff;padding:0;overflow:visible}
+  .policy-print-overlay{position:absolute;top:0;left:0;right:0;bottom:auto;background:#fff;padding:0;overflow:visible;width:100%;height:auto}
   .policy-print-toolbar{display:none}
-  .policy-print-page{box-shadow:none;margin:0;max-width:none;padding:24px 36px}
+  .policy-print-page{box-shadow:none;margin:0;max-width:none;width:100%;padding:24px 36px}
 }

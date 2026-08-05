@@ -45,10 +45,10 @@ export function PolicyPrintView({ doc, onClose }) {
         <button type="button" className="btn-primary" onClick={() => window.print()}><Printer size={16} /> Print</button>
       </div>
       <div className="policy-print-page" onClick={e => e.stopPropagation()}>
-        <img src="/logo.png" alt="" aria-hidden="true" className="policy-print-watermark" />
+        <img src="/logo-policy.png" alt="" aria-hidden="true" className="policy-print-watermark" />
         <div className="policy-print-header">
           <h1>{doc.title}</h1>
-          <img src="/logo.png" alt="Future Focus" />
+          <img src="/logo-policy.png" alt="Future Focus" />
         </div>
 
         {groups.length === 0 ? (
