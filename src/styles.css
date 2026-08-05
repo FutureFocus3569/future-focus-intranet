@@ -759,10 +759,22 @@ button{cursor:pointer}
 .policy-print-meta td{padding:9px 12px;border:1px solid #d8e3e9}
 .policy-print-meta-accent th,.policy-print-meta-accent td{background:#eaf6d9}
 
+@page{size:A4;margin:14mm 16mm}
+
 @media print{
   body *{visibility:hidden}
   .policy-print-overlay,.policy-print-overlay *{visibility:visible}
-  .policy-print-overlay{position:absolute;top:0;left:0;right:0;bottom:auto;background:#fff;padding:0;overflow:visible;width:100%;height:auto}
+  .policy-print-overlay{position:absolute;top:0;left:0;right:0;bottom:auto;background:#fff;padding:0;overflow:visible;width:100%;height:auto;min-height:0}
   .policy-print-toolbar{display:none}
-  .policy-print-page{box-shadow:none;margin:0;max-width:none;width:100%;padding:24px 36px}
+  .policy-print-page{box-shadow:none;margin:0;max-width:none;width:100%;padding:0;height:auto;min-height:0}
+  .policy-print-header{margin-bottom:18px;padding-bottom:10px}
+  .policy-print-header img{width:130px}
+  .policy-print-body{gap:11px;margin-bottom:18px}
+  .policy-print-bullets{gap:11px}
+  .policy-print-bullets li,.policy-print-paragraph{font-size:12.5px;line-height:1.45}
+  .policy-print-heading{font-size:14px}
+  /* Anchored to the page itself (not the content box) so it doesn't depend on
+     resolving percentage-height against an auto-sized ancestor during
+     pagination, and repeats correctly if a policy spans multiple pages. */
+  .policy-print-watermark{position:fixed;top:45%;left:50%;width:50%;transform:translate(-50%,-50%)}
 }
