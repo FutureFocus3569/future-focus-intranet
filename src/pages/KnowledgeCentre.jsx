@@ -760,6 +760,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
 
   const userId = currentProfile?.id
   const canManage = currentProfile?.permission === 'super_admin' || currentProfile?.permission === 'policy_admin'
+  const isSuperAdmin = currentProfile?.permission === 'super_admin'
 
   useEffect(() => {
     loadDocuments()
@@ -980,6 +981,31 @@ export function KnowledgeCentrePage({ currentProfile }) {
     } catch (err) {
       setCloseReviewError(err.message || 'Failed to close review. Please try again.')
       console.error('Close review error:', err)
+    }
+    setClosingReviewId(null)
+  }
+
+  async function reopenReview(policyDoc) {
+    setClosingReviewId(policyDoc.id)
+    setCloseReviewError('')
+    try {
+      const today = new Date()
+      const closesAt = new Date(today)
+      closesAt.setDate(closesAt.getDate() + 30)
+      const { error } = await supabase
+        .from('documents')
+        .update({
+          review_feedback_opens_at: today.toISOString().slice(0, 10),
+          review_feedback_closes_at: closesAt.toISOString().slice(0, 10),
+        })
+        .eq('id', policyDoc.id)
+
+      if (error) throw error
+
+      await loadPolicyReviewData()
+    } catch (err) {
+      setCloseReviewError(err.message || 'Failed to reopen review. Please try again.')
+      console.error('Reopen review error:', err)
     }
     setClosingReviewId(null)
   }
@@ -1229,6 +1255,20 @@ export function KnowledgeCentrePage({ currentProfile }) {
                         {closingReviewId === doc.id ? 'Closing...' : 'Close Review'}
                       </button>
                     )}
+                  </div>
+                )}
+                {!doc.isOpen && isSuperAdmin && (
+                  <div style={{ marginTop: 12 }}>
+                    <button
+                      className="btn-secondary"
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                      onClick={() => reopenReview(doc)}
+                      disabled={closingReviewId === doc.id}
+                      title="Reopen this policy for staff feedback (super admin only)"
+                    >
+                      <RotateCcw size={14} />
+                      {closingReviewId === doc.id ? 'Reopening...' : 'Reopen for Feedback'}
+                    </button>
                   </div>
                 )}
               </div>
