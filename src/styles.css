@@ -449,12 +449,8 @@
 .people-search input:focus{outline:2px solid #1a6eb544;border-color:#1a6eb5}
 .people-search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#8fa3ad;cursor:pointer;padding:4px;display:flex;border-radius:50%}
 .people-search-clear:hover{background:#f0f4f6;color:#455a68}
-.people-jump{display:flex;gap:8px;overflow-x:auto;flex:1;scrollbar-width:none;padding-bottom:2px}
-.people-jump::-webkit-scrollbar{display:none}
-.people-jump-chip{flex-shrink:0;border:1px solid #dfe7ec;background:#fff;color:#3d5566;font-size:12px;font-weight:600;padding:8px 14px;border-radius:20px;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
-.people-jump-chip:hover{border-color:#1a6eb5;color:#1a6eb5}
 .people-results-count{font-size:12px;color:#6b7e8a;white-space:nowrap}
-.centre-section{margin-bottom:48px;scroll-margin-top:90px}
+.centre-section{margin-bottom:48px}
 .centre-title{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:700;color:#0d2b36;margin:0 0 20px;padding-bottom:12px;border-bottom:2px solid #9dcc2b}
 .centre-title-count{font-size:12px;font-weight:600;color:#8fa3ad;background:#f2f6f8;padding:2px 9px;border-radius:20px}
 .relievers-section .centre-title{color:#7c3aed;border-bottom-color:#c9b3f8}
@@ -553,7 +549,6 @@
   .our-people-page{padding:20px 16px}
   .people-toolbar{flex-direction:column;align-items:stretch;gap:10px}
   .people-search{max-width:none;width:100%;flex:none}
-  .people-jump{width:100%;flex:none}
   .people-results-count{text-align:center}
   .centre-title{font-size:17px;margin-bottom:14px}
   .people-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}

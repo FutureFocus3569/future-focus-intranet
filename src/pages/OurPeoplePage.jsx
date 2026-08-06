@@ -2,10 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { supabase, CENTRES } from '../lib/supabase.js'
 import { Plus, Trash2, X, Edit2, User, Search } from 'lucide-react'
 
-function slugify(value) {
-  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-}
-
 function formatDateLabel(value) {
   if (!value) return 'Not set'
   const parsed = new Date(value)
@@ -220,10 +216,6 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
     return haystack.includes(q)
   }
 
-  function jumpToSection(id) {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
   useEffect(() => { loadStaff() }, [])
 
   useEffect(() => {
@@ -385,17 +377,8 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
                 </button>
               )}
             </div>
-            {isSearching ? (
+            {isSearching && (
               <div className="people-results-count">{totalResults} result{totalResults !== 1 ? 's' : ''} for "{search.trim()}"</div>
-            ) : (
-              <div className="people-jump">
-                {centreList.map(c => (
-                  <button key={c} className="people-jump-chip" onClick={() => jumpToSection(`centre-${slugify(c)}`)}>{c}</button>
-                ))}
-                {(relievers.length > 0 || isAdmin) && (
-                  <button className="people-jump-chip" onClick={() => jumpToSection('centre-relievers')}>🔄 Relievers</button>
-                )}
-              </div>
             )}
           </div>
 
@@ -404,7 +387,7 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
           ) : (
             <>
               {visibleCentreStaff.map(({ centre, people }) => (
-                <div key={centre} id={`centre-${slugify(centre)}`} className="centre-section">
+                <div key={centre} className="centre-section">
                   <h2 className="centre-title" style={{ borderBottomColor: getCentreColor(centre) }}>
                     {centre}
                     <span className="centre-title-count">{people.length}</span>
@@ -474,7 +457,7 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
               ))}
 
               {visibleRelievers.length > 0 && (
-                <div id="centre-relievers" className="centre-section relievers-section">
+                <div className="centre-section relievers-section">
                   <h2 className="centre-title">Relievers<span className="centre-title-count">{visibleRelievers.length}</span></h2>
                   <div className="people-grid">
                     {visibleRelievers.map(person => (
@@ -530,7 +513,7 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
               )}
 
               {isAdmin && relievers.length === 0 && !isSearching && (
-                <div id="centre-relievers" className="centre-section relievers-section">
+                <div className="centre-section relievers-section">
                   <h2 className="centre-title">Relievers</h2>
                   <div className="people-empty">No relievers added yet.</div>
                   <button className="btn-primary" onClick={() => { setShowAdd(true); setAddCentre(null) }} style={{marginTop: '16px'}}>
