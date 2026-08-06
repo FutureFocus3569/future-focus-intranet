@@ -418,12 +418,14 @@ export function StaffManagementPage({ currentProfile }) {
                   {s.mobile && <span>{s.mobile}</span>}
                 </div>
               </div>
-              <span className="staff-centre">{s.centre || '—'}</span>
-              <span className="staff-role">{s.role_title || '—'}</span>
-              <span className="staff-role">{s.start_date ? new Date(s.start_date).toLocaleDateString('en-NZ', {day:'numeric',month:'short',year:'numeric'}) : '—'}</span>
-              <span className="staff-permission" style={{ color: PERMISSION_COLOURS[s.permission] }}>
-                {PERMISSION_LABELS[s.permission] || s.permission}
-              </span>
+              <div className="staff-meta-grid">
+                <span className="staff-centre" data-label="Centre">{s.centre || '—'}</span>
+                <span className="staff-role" data-label="Role">{s.role_title || '—'}</span>
+                <span className="staff-started" data-label="Started">{s.start_date ? new Date(s.start_date).toLocaleDateString('en-NZ', {day:'numeric',month:'short',year:'numeric'}) : '—'}</span>
+                <span className="staff-permission" data-label="Access" style={{ color: PERMISSION_COLOURS[s.permission] }}>
+                  {PERMISSION_LABELS[s.permission] || s.permission}
+                </span>
+              </div>
               <div className="staff-actions">
                 {canEditStaff(s) && (
                   <button className="btn-icon-primary" onClick={() => setEditing(s)} title="Edit staff member">

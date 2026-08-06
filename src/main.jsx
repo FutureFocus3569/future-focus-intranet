@@ -924,6 +924,9 @@ function App(){
     if (nextPage !== 'Appraisals') {
       setAppraisalFocusStaffId(null)
     }
+    if (nextPage === 'Home' || nextPage === 'Birthdays' || nextPage === 'Anniversaries') {
+      loadCelebrations()
+    }
     setPage(nextPage)
   }
 

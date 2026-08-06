@@ -2,6 +2,29 @@ import React, { useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { ChevronLeft, ChevronRight, PartyPopper, Trophy, Send } from 'lucide-react'
 
+const CENTRE_COLORS = {
+  'All Centres': { text: '#fff', bg: '#0e9a8a' },
+  'Papamoa Beach': { text: '#fff', bg: '#1a6eb5' },
+  'The Boulevard': { text: '#fff', bg: '#0e9a8a' },
+  'Terrace Views': { text: '#fff', bg: '#0084b3' },
+  'Livingstone': { text: '#fff', bg: '#12956d' },
+  'West Dune': { text: '#fff', bg: '#3b82c4' },
+  'Head Office': { text: '#fff', bg: '#2eb89f' },
+}
+
+function getCentreColor(centre) {
+  return CENTRE_COLORS[centre] || { text: '#fff', bg: '#6b7e8a' }
+}
+
+function groupByMonth(list) {
+  return list.reduce((acc, item) => {
+    const month = item.nextDate.toLocaleString('en-NZ', { month: 'long', year: 'numeric' })
+    if (!acc[month]) acc[month] = []
+    acc[month].push(item)
+    return acc
+  }, {})
+}
+
 function getInitials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
   if (!parts.length) return 'FF'
@@ -73,10 +96,6 @@ function buildBirthdayList(staff) {
 }
 
 function buildAnniversaryList(staff) {
-  const today = new Date()
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-  const oneMonthDays = 31
-
   return (staff || [])
     .filter(p => p?.start_date)
     .map(p => {
@@ -89,23 +108,17 @@ function buildAnniversaryList(staff) {
       const milestoneYears = next.getFullYear() - start.getFullYear()
       if (milestoneYears <= 0) return null
 
-      const nextAnniversaryDay = new Date(next.getFullYear(), next.getMonth(), next.getDate())
-      const daysUntil = Math.ceil((nextAnniversaryDay.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24))
-
-      // Show anniversary celebrations only in the month leading into their next year mark.
-      if (daysUntil < 0 || daysUntil > oneMonthDays) return null
-
       const name = `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown Staff'
       const monthDay = `${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`
+      const dateLabel = next.toLocaleDateString('en-NZ', { weekday: 'short', month: 'short', day: 'numeric' })
       return {
         id: p.id,
         name,
         centre: p.centre || 'No Centre',
         photoUrl: normalizePhotoUrl(p.photo_url),
         years: milestoneYears,
-        nextDate: nextAnniversaryDay,
-        displayDate: `${milestoneYears} year${milestoneYears === 1 ? '' : 's'}`,
-        subtitle: next ? next.toLocaleDateString('en-NZ', { weekday: 'short', month: 'short', day: 'numeric' }) : '',
+        nextDate: next,
+        displayDate: `${dateLabel} (${milestoneYears}yr${milestoneYears === 1 ? '' : 's'})`,
         threadKey: `anniversary:${p.id}:${monthDay}`,
       }
     })
@@ -188,6 +201,7 @@ export function CelebrationsPage({ currentProfile, type = 'birthdays', staff = [
   const icon = isBirthday ? <PartyPopper size={16} /> : <Trophy size={16} />
 
   const people = useMemo(() => (isBirthday ? buildBirthdayList(staff) : buildAnniversaryList(staff)), [isBirthday, staff])
+  const groupedPeople = useMemo(() => groupByMonth(people), [people])
 
   const [openThread, setOpenThread] = useState('')
   const [commentsByThread, setCommentsByThread] = useState({})
@@ -304,86 +318,96 @@ export function CelebrationsPage({ currentProfile, type = 'birthdays', staff = [
       ) : (
         <div className={isBirthday ? 'celebrations-layout' : ''}>
         <div className="celebration-cards">
-          {people.map(person => {
-            const comments = commentsByThread[person.threadKey] || []
-            const isOpen = openThread === person.threadKey
-            const showPhoto = Boolean(person.photoUrl) && !brokenPhotoKeys.has(person.threadKey)
-            const isTodayBirthday = !isBirthday || isSameCalendarDay(person.nextDate, new Date())
+          {Object.entries(groupedPeople).map(([month, monthPeople]) => (
+            <div key={month} className="event-group">
+              <div className="event-group-header">{month}</div>
+              {monthPeople.map(person => {
+                const comments = commentsByThread[person.threadKey] || []
+                const isOpen = openThread === person.threadKey
+                const showPhoto = Boolean(person.photoUrl) && !brokenPhotoKeys.has(person.threadKey)
+                const isTodayBirthday = !isBirthday || isSameCalendarDay(person.nextDate, new Date())
 
-            return (
-              <article key={person.threadKey} id={`celebration-${person.threadKey}`} className="celebration-card">
-                <div className="celebration-person-head">
-                  {showPhoto ? (
-                    <img
-                      src={person.photoUrl}
-                      alt={person.name}
-                      className="celebration-avatar"
-                      onError={() => {
-                        setBrokenPhotoKeys(prev => {
-                          const next = new Set(prev)
-                          next.add(person.threadKey)
-                          return next
-                        })
-                      }}
-                    />
-                  ) : (
-                    <div className="celebration-avatar celebration-avatar-fallback">{getInitials(person.name)}</div>
-                  )}
-                  <div className="celebration-person-meta">
-                    <h3>{person.name}</h3>
-                    <p>{person.centre}</p>
-                    <small>{isBirthday ? person.displayDate : `${person.displayDate} • Next on ${person.subtitle}`}</small>
-                  </div>
-                  <button
-                    className="btn-secondary"
-                    onClick={() => isTodayBirthday && toggleThread(person.threadKey)}
-                    disabled={!isTodayBirthday}
-                    title={!isTodayBirthday ? `Comments open on ${person.name.split(' ')[0]}'s birthday` : undefined}
-                  >
-                    {!isTodayBirthday ? 'Opens on their birthday' : isOpen ? 'Hide comments' : 'Open comments'}
-                  </button>
-                </div>
-
-                {isOpen && isTodayBirthday && (
-                  <div className="celebration-comments">
-                    {loadingThread === person.threadKey ? (
-                      <div className="staff-loading">Loading comments…</div>
-                    ) : comments.length === 0 ? (
-                      <p className="celebration-empty-note">Be the first to say {isBirthday ? 'happy birthday' : 'congratulations'}.</p>
-                    ) : (
-                      <div className="celebration-comment-list">
-                        {comments.map(comment => (
-                          <div key={comment.id} className="celebration-comment-item">
-                            <div className="celebration-comment-top">
-                              <strong>{comment.author_name || 'Team Member'}</strong>
-                              <span>{formatTimeAgo(comment.created_at)}</span>
-                            </div>
-                            <p>{comment.message}</p>
-                          </div>
-                        ))}
+                return (
+                  <article key={person.threadKey} id={`celebration-${person.threadKey}`} className="celebration-card">
+                    <div className="celebration-person-head">
+                      {showPhoto ? (
+                        <img
+                          src={person.photoUrl}
+                          alt={person.name}
+                          className="celebration-avatar"
+                          onError={() => {
+                            setBrokenPhotoKeys(prev => {
+                              const next = new Set(prev)
+                              next.add(person.threadKey)
+                              return next
+                            })
+                          }}
+                        />
+                      ) : (
+                        <div className="celebration-avatar celebration-avatar-fallback">{getInitials(person.name)}</div>
+                      )}
+                      <div className="celebration-person-meta">
+                        <h3>{person.name}</h3>
+                        <span
+                          className="event-centre-badge celebration-centre-badge"
+                          style={{ background: getCentreColor(person.centre).bg, color: getCentreColor(person.centre).text }}
+                        >
+                          {person.centre}
+                        </span>
+                        <small>{person.displayDate}</small>
                       </div>
-                    )}
-
-                    <div className="celebration-comment-form">
-                      <input
-                        value={draftByThread[person.threadKey] || ''}
-                        onChange={e => setDraftByThread(prev => ({ ...prev, [person.threadKey]: e.target.value }))}
-                        placeholder={isBirthday ? `Say happy birthday to ${person.name}...` : `Congratulate ${person.name}...`}
-                        maxLength={300}
-                      />
                       <button
-                        className="btn-primary"
-                        onClick={() => sendComment(person.threadKey)}
-                        disabled={sendingThread === person.threadKey}
+                        className="btn-secondary"
+                        onClick={() => isTodayBirthday && toggleThread(person.threadKey)}
+                        disabled={!isTodayBirthday}
+                        title={!isTodayBirthday ? `Comments open on ${person.name.split(' ')[0]}'s birthday` : undefined}
                       >
-                        <Send size={14} /> {sendingThread === person.threadKey ? 'Sending…' : 'Send'}
+                        {!isTodayBirthday ? 'Opens on their birthday' : isOpen ? 'Hide comments' : 'Open comments'}
                       </button>
                     </div>
-                  </div>
-                )}
-              </article>
-            )
-          })}
+
+                    {isOpen && isTodayBirthday && (
+                      <div className="celebration-comments">
+                        {loadingThread === person.threadKey ? (
+                          <div className="staff-loading">Loading comments…</div>
+                        ) : comments.length === 0 ? (
+                          <p className="celebration-empty-note">Be the first to say {isBirthday ? 'happy birthday' : 'congratulations'}.</p>
+                        ) : (
+                          <div className="celebration-comment-list">
+                            {comments.map(comment => (
+                              <div key={comment.id} className="celebration-comment-item">
+                                <div className="celebration-comment-top">
+                                  <strong>{comment.author_name || 'Team Member'}</strong>
+                                  <span>{formatTimeAgo(comment.created_at)}</span>
+                                </div>
+                                <p>{comment.message}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="celebration-comment-form">
+                          <input
+                            value={draftByThread[person.threadKey] || ''}
+                            onChange={e => setDraftByThread(prev => ({ ...prev, [person.threadKey]: e.target.value }))}
+                            placeholder={isBirthday ? `Say happy birthday to ${person.name}...` : `Congratulate ${person.name}...`}
+                            maxLength={300}
+                          />
+                          <button
+                            className="btn-primary"
+                            onClick={() => sendComment(person.threadKey)}
+                            disabled={sendingThread === person.threadKey}
+                          >
+                            <Send size={14} /> {sendingThread === person.threadKey ? 'Sending…' : 'Send'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+          ))}
         </div>
         {isBirthday && (
           <aside className="celebrations-sidebar">
