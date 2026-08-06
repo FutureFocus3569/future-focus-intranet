@@ -418,22 +418,36 @@
 
 /* ── Our People page ── */
 .our-people-page{padding:32px 36px;max-width:1200px}
-.centre-section{margin-bottom:48px}
-.centre-title{font-size:22px;font-weight:700;color:#0d2b36;margin:0 0 24px;padding-bottom:12px;border-bottom:2px solid #9dcc2b}
-.relievers-section .centre-title{color:#7c3aed}
-.relievers-section .centre-title::before{content:'🔄 '}
-.people-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:24px}
-.person-card{background:#fff;border:1px solid #edf2f5;border-radius:14px;overflow:hidden;transition:box-shadow .15s,transform .15s}.person-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.08);transform:translateY(-2px)}
-.person-photo{width:100%;aspect-ratio:1/1;background:#f5f9fb;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.people-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.people-search{position:relative;flex:1;min-width:220px;max-width:340px}
+.people-search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#8fa3ad;pointer-events:none}
+.people-search input{width:100%;height:40px;border:1px solid #dfe7ec;border-radius:10px;padding:0 34px;font-size:13px;color:#223b4b;background:#fff}
+.people-search input:focus{outline:2px solid #1a6eb544;border-color:#1a6eb5}
+.people-search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#8fa3ad;cursor:pointer;padding:4px;display:flex;border-radius:50%}
+.people-search-clear:hover{background:#f0f4f6;color:#455a68}
+.people-jump{display:flex;gap:8px;overflow-x:auto;flex:1;scrollbar-width:none;padding-bottom:2px}
+.people-jump::-webkit-scrollbar{display:none}
+.people-jump-chip{flex-shrink:0;border:1px solid #dfe7ec;background:#fff;color:#3d5566;font-size:12px;font-weight:600;padding:8px 14px;border-radius:20px;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
+.people-jump-chip:hover{border-color:#1a6eb5;color:#1a6eb5}
+.people-results-count{font-size:12px;color:#6b7e8a;white-space:nowrap}
+.centre-section{margin-bottom:48px;scroll-margin-top:90px}
+.centre-title{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:700;color:#0d2b36;margin:0 0 20px;padding-bottom:12px;border-bottom:2px solid #9dcc2b}
+.centre-title-count{font-size:12px;font-weight:600;color:#8fa3ad;background:#f2f6f8;padding:2px 9px;border-radius:20px}
+.relievers-section .centre-title{color:#7c3aed;border-bottom-color:#c9b3f8}
+.relievers-section .centre-title::before{content:'🔄'}
+.people-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:20px}
+.person-card{background:#fff;border:1px solid #edf2f5;border-top:3px solid var(--accent,#9dcc2b);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .15s,transform .15s}.person-card:hover{box-shadow:0 6px 20px rgba(13,43,54,.1);transform:translateY(-3px)}
+.person-photo{width:100%;aspect-ratio:1/1;background:#f5f9fb;overflow:hidden;display:flex;align-items:center;justify-content:center;position:relative}
 .person-photo img{width:100%;height:100%;object-fit:cover}
 .photo-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#eaf7f7,#f5f9fb);color:#d0dde5}
-.person-card .person-info{padding:16px;flex:1}
-.person-card .person-info h3{font-size:16px;font-weight:700;color:#0d2b36;margin:0 0 4px}
+.person-card .person-info{padding:14px;flex:1;display:flex;flex-direction:column}
+.person-card .person-info h3{font-size:15px;font-weight:700;color:#0d2b36;margin:0 0 3px;line-height:1.25}
 .person-role{font-size:12px;color:#005866;font-weight:600;margin:0 0 6px}
-.leader-badge{display:inline-block;background:#9dcc2b;color:#0d2b36;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;margin-bottom:8px}
+.leader-badge{display:inline-flex;align-items:center;gap:4px;background:#eaf7d5;color:#4d6b12;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;margin-bottom:8px;width:fit-content}
+.leader-badge::before{content:'★';font-size:9px}
 .person-bio{font-size:12px;color:#6b7e8a;line-height:1.5;margin:0}
-.person-dates{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#8fa3ad;margin:4px 0}
-.person-actions{display:flex;gap:6px;padding:0 16px 12px;border-top:1px solid #f0f4f6;justify-content:flex-end}
+.person-dates{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#8fa3ad;margin:auto 0 0;padding-top:6px}
+.person-actions{display:flex;gap:6px;padding:0 14px 12px;border-top:1px solid #f0f4f6;justify-content:flex-end}
 .person-card-clickable{cursor:pointer}
 .person-card-clickable:focus-visible{outline:2px solid #1a6eb5;outline-offset:2px}
 .people-empty{text-align:center;padding:48px 20px;color:#8fa3ad;font-size:14px}
@@ -513,15 +527,16 @@
 
 @media(max-width:768px){
   .our-people-page{padding:20px 16px}
-  .centre-title{font-size:18px;margin-bottom:16px}
-  .people-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-  .person-card{aspect-ratio:1/1;display:flex;flex-direction:column}
-  .person-photo{flex:1 1 auto;aspect-ratio:auto;min-height:0}
+  .people-toolbar{flex-direction:column;align-items:stretch;gap:10px}
+  .people-search{max-width:none}
+  .people-results-count{text-align:center}
+  .centre-title{font-size:17px;margin-bottom:14px}
+  .people-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   .person-card .person-info{padding:10px 10px 8px}
   .person-card .person-info h3{font-size:13px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .person-role{font-size:11px;margin:0 0 4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .leader-badge{font-size:9px;padding:2px 6px;margin-bottom:6px}
-  .person-dates{font-size:10px;gap:2px;margin:2px 0 0}
+  .person-dates{font-size:10px;gap:2px;padding-top:4px}
   .person-actions{padding:0 10px 10px;gap:4px}
   .person-detail-grid{grid-template-columns:1fr}
   .person-detail-head{align-items:flex-start}

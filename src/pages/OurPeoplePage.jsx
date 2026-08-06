@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { supabase, CENTRES } from '../lib/supabase.js'
-import { Plus, Trash2, X, Edit2, User } from 'lucide-react'
+import { Plus, Trash2, X, Edit2, User, Search } from 'lucide-react'
+
+function slugify(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+}
 
 function formatDateLabel(value) {
   if (!value) return 'Not set'
@@ -166,6 +170,7 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
   const [editCentre, setEditCentre] = useState('')
   const [deleting, setDeleting] = useState(null)
   const [selectedPerson, setSelectedPerson] = useState(null)
+  const [search, setSearch] = useState('')
 
   const isAdmin = currentProfile?.permission === 'super_admin'
   const isCentreLeader = currentProfile?.permission === 'centre_leader'
@@ -206,6 +211,17 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
 
   function getCentreColor(centre) {
     return CENTRE_COLORS[centre] || '#9dcc2b'
+  }
+
+  function matchesSearch(person) {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    const haystack = `${person.first_name || ''} ${person.last_name || ''} ${person.role_title || ''}`.toLowerCase()
+    return haystack.includes(q)
+  }
+
+  function jumpToSection(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   useEffect(() => { loadStaff() }, [])
@@ -329,6 +345,13 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
     people: groupedBycentre[c] || [],
   }))
 
+  const isSearching = search.trim().length > 0
+  const visibleCentreStaff = centreStaff
+    .map(cs => ({ ...cs, people: cs.people.filter(matchesSearch) }))
+    .filter(cs => !isSearching || cs.people.length > 0)
+  const visibleRelievers = relievers.filter(matchesSearch)
+  const totalResults = visibleCentreStaff.reduce((sum, cs) => sum + cs.people.length, 0) + visibleRelievers.length
+
   return (
     <div className="our-people-page">
       <div className="staff-page-header">
@@ -347,51 +370,146 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
         <div className="staff-loading">Loading staff…</div>
       ) : (
         <>
-          {centreStaff.map(({ centre, people }) => (
-            <div key={centre} className="centre-section">
-              <h2 className="centre-title" style={{ borderBottomColor: getCentreColor(centre) }}>{centre}</h2>
-              
-              {people.length === 0 ? (
-                <div className="people-empty">No staff members at this centre yet.</div>
-              ) : (
-                <div className="people-grid">
-                  {people.map(person => (
-                    <div
-                      key={person.id}
-                      className="person-card person-card-clickable"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setSelectedPerson(person)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          setSelectedPerson(person)
-                        }
-                      }}
-                      aria-label={`View details for ${person.first_name} ${person.last_name}`}
-                    >
-                      <div className="person-photo">
-                        {person.photo_url ? (
-                          <img src={person.photo_url} alt={`${person.first_name} ${person.last_name}`} loading="lazy" decoding="async" />
-                        ) : (
-                          <div className="photo-placeholder"><User size={40}/></div>
-                        )}
-                      </div>
-                      <div className="person-info">
-                        <h3>{person.first_name} {person.last_name}</h3>
-                        {person.role_title && <p className="person-role">{person.role_title}</p>}
-                        {person.permission === 'centre_leader' && <span className="leader-badge">Centre Leader</span>}
-                        <div className="person-dates">
-                          {person.start_date && <span>{calculateTenure(person.start_date)}</span>}
+          <div className="people-toolbar">
+            <div className="people-search">
+              <Search size={15} />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search by name or role…"
+                aria-label="Search staff"
+              />
+              {search && (
+                <button className="people-search-clear" onClick={() => setSearch('')} aria-label="Clear search">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            {isSearching ? (
+              <div className="people-results-count">{totalResults} result{totalResults !== 1 ? 's' : ''} for "{search.trim()}"</div>
+            ) : (
+              <div className="people-jump">
+                {centreList.map(c => (
+                  <button key={c} className="people-jump-chip" onClick={() => jumpToSection(`centre-${slugify(c)}`)}>{c}</button>
+                ))}
+                {(relievers.length > 0 || isAdmin) && (
+                  <button className="people-jump-chip" onClick={() => jumpToSection('centre-relievers')}>🔄 Relievers</button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {isSearching && totalResults === 0 ? (
+            <div className="people-empty">No staff match "{search.trim()}".</div>
+          ) : (
+            <>
+              {visibleCentreStaff.map(({ centre, people }) => (
+                <div key={centre} id={`centre-${slugify(centre)}`} className="centre-section">
+                  <h2 className="centre-title" style={{ borderBottomColor: getCentreColor(centre) }}>
+                    {centre}
+                    <span className="centre-title-count">{people.length}</span>
+                  </h2>
+
+                  {people.length === 0 ? (
+                    <div className="people-empty">No staff members at this centre yet.</div>
+                  ) : (
+                    <div className="people-grid">
+                      {people.map(person => (
+                        <div
+                          key={person.id}
+                          className="person-card person-card-clickable"
+                          style={{ '--accent': getCentreColor(centre) }}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedPerson(person)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setSelectedPerson(person)
+                            }
+                          }}
+                          aria-label={`View details for ${person.first_name} ${person.last_name}`}
+                        >
+                          <div className="person-photo">
+                            {person.photo_url ? (
+                              <img src={person.photo_url} alt={`${person.first_name} ${person.last_name}`} loading="lazy" decoding="async" />
+                            ) : (
+                              <div className="photo-placeholder"><User size={40}/></div>
+                            )}
+                          </div>
+                          <div className="person-info">
+                            <h3>{person.first_name} {person.last_name}</h3>
+                            {person.role_title && <p className="person-role">{person.role_title}</p>}
+                            {person.permission === 'centre_leader' && <span className="leader-badge">Centre Leader</span>}
+                            <div className="person-dates">
+                              {person.start_date && <span>{calculateTenure(person.start_date)}</span>}
+                            </div>
+                          </div>
+                          {(canEditPerson(person) || canDeletePerson(person)) && (
+                            <div className="person-actions">
+                              {canEditPerson(person) && (
+                                <button className="btn-icon-primary" onClick={(e) => {
+                                  e.stopPropagation()
+                                  setEditingStaff(person)
+                                  setEditCentre(person.centre)
+                                }} title="Edit person">
+                                  <Edit2 size={15}/>
+                                </button>
+                              )}
+                              {canDeletePerson(person) && (
+                                <button className="btn-icon-danger" onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDelete(person)
+                                }} disabled={deleting === person.id} title="Remove person">
+                                  <Trash2 size={15}/>
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                      {(canEditPerson(person) || canDeletePerson(person)) && (
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {visibleRelievers.length > 0 && (
+                <div id="centre-relievers" className="centre-section relievers-section">
+                  <h2 className="centre-title">Relievers<span className="centre-title-count">{visibleRelievers.length}</span></h2>
+                  <div className="people-grid">
+                    {visibleRelievers.map(person => (
+                      <div
+                        key={person.id}
+                        className="person-card person-card-clickable"
+                        style={{ '--accent': '#7c3aed' }}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedPerson(person)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            setSelectedPerson(person)
+                          }
+                        }}
+                        aria-label={`View details for ${person.first_name} ${person.last_name}`}
+                      >
+                        <div className="person-photo">
+                          {person.photo_url ? (
+                            <img src={person.photo_url} alt={`${person.first_name} ${person.last_name}`} loading="lazy" decoding="async" />
+                          ) : (
+                            <div className="photo-placeholder"><User size={40}/></div>
+                          )}
+                        </div>
+                        <div className="person-info">
+                          <h3>{person.first_name} {person.last_name}</h3>
+                          {person.role_title && <p className="person-role">{person.role_title}</p>}
+                        </div>
                         <div className="person-actions">
                           {canEditPerson(person) && (
                             <button className="btn-icon-primary" onClick={(e) => {
                               e.stopPropagation()
                               setEditingStaff(person)
-                              setEditCentre(person.centre)
+                              setEditCentre(null)
                             }} title="Edit person">
                               <Edit2 size={15}/>
                             </button>
@@ -405,77 +523,22 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
                             </button>
                           )}
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
-            </div>
-          ))}
 
-          {relievers.length > 0 && (
-            <div className="centre-section relievers-section">
-              <h2 className="centre-title">🔄 Relievers</h2>
-              <div className="people-grid">
-                {relievers.map(person => (
-                  <div
-                    key={person.id}
-                    className="person-card person-card-clickable"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedPerson(person)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setSelectedPerson(person)
-                      }
-                    }}
-                    aria-label={`View details for ${person.first_name} ${person.last_name}`}
-                  >
-                    <div className="person-photo">
-                      {person.photo_url ? (
-                        <img src={person.photo_url} alt={`${person.first_name} ${person.last_name}`} loading="lazy" decoding="async" />
-                      ) : (
-                        <div className="photo-placeholder"><User size={40}/></div>
-                      )}
-                    </div>
-                    <div className="person-info">
-                      <h3>{person.first_name} {person.last_name}</h3>
-                      {person.role_title && <p className="person-role">{person.role_title}</p>}
-                    </div>
-                    <div className="person-actions">
-                      {canEditPerson(person) && (
-                        <button className="btn-icon-primary" onClick={(e) => {
-                          e.stopPropagation()
-                          setEditingStaff(person)
-                          setEditCentre(null)
-                        }} title="Edit person">
-                          <Edit2 size={15}/>
-                        </button>
-                      )}
-                      {canDeletePerson(person) && (
-                        <button className="btn-icon-danger" onClick={(e) => {
-                          e.stopPropagation()
-                          handleDelete(person)
-                        }} disabled={deleting === person.id} title="Remove person">
-                          <Trash2 size={15}/>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {isAdmin && relievers.length === 0 && (
-            <div className="centre-section relievers-section">
-              <h2 className="centre-title">🔄 Relievers</h2>
-              <div className="people-empty">No relievers added yet.</div>
-              <button className="btn-primary" onClick={() => { setShowAdd(true); setAddCentre(null) }} style={{marginTop: '16px'}}>
-                <Plus size={16}/> Add Reliever
-              </button>
-            </div>
+              {isAdmin && relievers.length === 0 && !isSearching && (
+                <div id="centre-relievers" className="centre-section relievers-section">
+                  <h2 className="centre-title">Relievers</h2>
+                  <div className="people-empty">No relievers added yet.</div>
+                  <button className="btn-primary" onClick={() => { setShowAdd(true); setAddCentre(null) }} style={{marginTop: '16px'}}>
+                    <Plus size={16}/> Add Reliever
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
