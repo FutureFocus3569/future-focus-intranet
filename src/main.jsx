@@ -782,6 +782,21 @@ function Resources() {
   </section>
 }
 
+function pageToHash(pageName) {
+  return `#${encodeURIComponent(pageName)}`;
+}
+
+function hashToPage(hash) {
+  const raw = String(hash || '').replace(/^#/, '');
+  if (!raw) return null;
+  try {
+    const decoded = decodeURIComponent(raw);
+    return decoded || null;
+  } catch {
+    return null;
+  }
+}
+
 function App(){
   const [session, setSession] = useState(undefined);
   const [profile, setProfile] = useState(null);
@@ -824,6 +839,9 @@ function App(){
       return;
     }
 
+    const restoredPage = hashToPage(window.location.hash);
+    if (restoredPage) setPage(restoredPage);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) loadProfile(session.user.id);
@@ -834,6 +852,15 @@ function App(){
       else setProfile(null);
     });
     return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    function handleHashChange() {
+      const nextPage = hashToPage(window.location.hash);
+      if (nextPage) setPage(nextPage);
+    }
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   async function loadProfile(userId) {
@@ -912,11 +939,13 @@ function App(){
   async function handleSignOut() {
     await supabase.auth.signOut();
     setPage('Home');
+    window.location.hash = '';
   }
 
   function openAppraisalForStaff(staffId) {
     setAppraisalFocusStaffId(staffId || null)
     setPage('Appraisals')
+    window.location.hash = pageToHash('Appraisals')
     setSidebarOpen(false)
   }
 
@@ -926,6 +955,10 @@ function App(){
     }
     if (nextPage === 'Home' || nextPage === 'Birthdays' || nextPage === 'Anniversaries') {
       loadCelebrations()
+    }
+    const nextHash = pageToHash(nextPage)
+    if (window.location.hash !== nextHash) {
+      window.location.hash = nextHash
     }
     setPage(nextPage)
   }

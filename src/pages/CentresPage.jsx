@@ -82,6 +82,29 @@ function formatCheckinTime(value) {
   })
 }
 
+const APPRAISAL_STATUS_STYLES = {
+  draft: { bg: '#eef2f5', text: '#5b6b78' },
+  assigned: { bg: '#e6eff9', text: '#1a6eb5' },
+  self_submitted: { bg: '#fef3c7', text: '#92400e' },
+  manager_in_progress: { bg: '#fef3c7', text: '#92400e' },
+  review_360_open: { bg: '#fef3c7', text: '#92400e' },
+  review_360_closed: { bg: '#fde68a', text: '#78350f' },
+  meeting_completed: { bg: '#dcfce7', text: '#166534' },
+  signed_off: { bg: '#dcfce7', text: '#166534' },
+  archived: { bg: '#f1f5f9', text: '#64748b' },
+}
+
+function getAppraisalStatusStyle(status) {
+  return APPRAISAL_STATUS_STYLES[status] || { bg: '#eef2f5', text: '#5b6b78' }
+}
+
+function getCycleStatusLabel(status) {
+  return String(status || '')
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
 function MetricCard({ title, value, hint, Icon }) {
   return (
     <article className="centre-metric-card">
@@ -123,7 +146,7 @@ function MoodBars({ summary }) {
   )
 }
 
-function TrendChart({ centreSeries, orgSeries }) {
+function TrendChart({ centreSeries, orgSeries, centreLabel }) {
   const points = centreSeries.map((point, index) => ({
     label: point.label,
     centreAvg: point.avg,
@@ -133,23 +156,29 @@ function TrendChart({ centreSeries, orgSeries }) {
   }))
 
   return (
-    <div className="centre-trend-chart">
-      {points.map((p, index) => {
-        const centrePct = p.centreAvg > 0 ? Math.max(8, ((p.centreAvg - 1) / 4) * 100) : 0
-        const orgPct = p.orgAvg > 0 ? Math.max(8, ((p.orgAvg - 1) / 4) * 100) : 0
-        const showLabel = index % 3 === 0 || index === points.length - 1
+    <>
+      <div className="centre-trend-legend">
+        <span><i className="centre-trend-swatch centre" />{centreLabel}</span>
+        <span><i className="centre-trend-swatch org" />Organisation</span>
+      </div>
+      <div className="centre-trend-chart">
+        {points.map((p, index) => {
+          const centrePct = p.centreAvg > 0 ? Math.max(8, ((p.centreAvg - 1) / 4) * 100) : 0
+          const orgPct = p.orgAvg > 0 ? Math.max(8, ((p.orgAvg - 1) / 4) * 100) : 0
+          const showLabel = index % 3 === 0 || index === points.length - 1
 
-        return (
-          <div key={`${p.label}-${index}`} className="centre-trend-col">
-            <div className="centre-trend-bars" title={`Centre: ${p.centreAvg ? p.centreAvg.toFixed(2) : 'No data'} | Org: ${p.orgAvg ? p.orgAvg.toFixed(2) : 'No data'}`}>
-              <div className="centre-trend-bar centre" style={{ height: `${centrePct}%` }} />
-              <div className="centre-trend-bar org" style={{ height: `${orgPct}%` }} />
+          return (
+            <div key={`${p.label}-${index}`} className="centre-trend-col">
+              <div className="centre-trend-bars" title={`${centreLabel}: ${p.centreAvg ? p.centreAvg.toFixed(2) : 'No data'} | Organisation: ${p.orgAvg ? p.orgAvg.toFixed(2) : 'No data'}`}>
+                <div className="centre-trend-bar centre" style={{ height: `${centrePct}%` }} />
+                <div className="centre-trend-bar org" style={{ height: `${orgPct}%` }} />
+              </div>
+              <small>{showLabel ? p.label : ''}</small>
             </div>
-            <small>{showLabel ? p.label : ''}</small>
-          </div>
-        )
-      })}
-    </div>
+          )
+        })}
+      </div>
+    </>
   )
 }
 
@@ -405,6 +434,7 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
                 <div className="appraisal-status-grid">
                   {appraisalRows.map((cycle) => {
                     const staffName = `${cycle.staff?.first_name || ''} ${cycle.staff?.last_name || ''}`.trim() || 'Unknown staff member'
+                    const statusStyle = getAppraisalStatusStyle(cycle.status)
                     return (
                       <button
                         key={cycle.id}
@@ -412,9 +442,13 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
                         className="appraisal-status-item"
                         onClick={() => onOpenAppraisal?.(cycle.staff_id)}
                       >
-                        <strong>{staffName}</strong>
+                        <div className="appraisal-status-item-top">
+                          <strong>{staffName}</strong>
+                          <span className="appraisal-status-badge" style={{ background: statusStyle.bg, color: statusStyle.text }}>
+                            {getCycleStatusLabel(cycle.status)}
+                          </span>
+                        </div>
                         <span>{cycle.template?.title || 'Appraisal template'}</span>
-                        <span>{cycle.status}</span>
                         <span>{cycle.period_start} to {cycle.period_end}</span>
                       </button>
                     )
@@ -429,7 +463,7 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
                 <small>Last 90 days</small>
               </div>
 
-              <TrendChart centreSeries={centreTrend} orgSeries={orgTrend} />
+              <TrendChart centreSeries={centreTrend} orgSeries={orgTrend} centreLabel={selectedLabel} />
 
               <div className="centre-wellbeing-grid">
                 <div className="centre-wellbeing-panel">
@@ -495,14 +529,6 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
                   })}
                 </div>
               )}
-            </article>
-
-            <article className="centre-module">
-              <div className="centre-module-header">
-                <h3>Organisation Updates</h3>
-                <small>Module scaffold</small>
-              </div>
-              <p>This space can surface key organisation-wide items relevant to this centre.</p>
             </article>
           </section>
         </>
