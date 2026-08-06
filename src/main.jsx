@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Home, Building2, Users, GraduationCap, FileText, ClipboardList, Sparkles,
-  Inbox, Search, Bell, MessageCircle, ChevronDown, ChevronRight, CalendarDays,
+  Search, Bell, MessageCircle, ChevronDown, ChevronRight, CalendarDays,
   Wrench, ShieldCheck, LifeBuoy, BookOpen, Leaf, UserRound, Trophy, FolderOpen,
   Clock3, PartyPopper, HeartHandshake, LayoutDashboard, ExternalLink, Menu, X, LogOut, User, Edit2, Plus, Trash2,
   Eye, EyeOff, Copy, Check, Lock
@@ -33,9 +33,7 @@ const navItems = [
   [Users, 'Our People'],
   [HeartHandshake, 'Appraisals'],
   [GraduationCap, 'Learning'],
-  [ClipboardList, 'Forms'],
   [Sparkles, 'FF AI'],
-  [Inbox, 'Inbox'],
 ];
 
 const quickLinks = [
