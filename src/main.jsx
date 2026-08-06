@@ -615,14 +615,32 @@ function ProfileModal({ profile, onClose, onSaved }) {
 function Header({ onMenuClick, profile, onSignOut, onProfileClick }) {
   const firstName = profile?.first_name ?? 'there';
   const roleTitle = profile?.role_title ?? '';
+  const fullName = `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim();
+  const [searchOpen, setSearchOpen] = useState(false);
+
   return <header className="topbar">
     <button className="hamburger" onClick={onMenuClick} aria-label="Open menu"><Menu size={22}/></button>
-    <div className="search-box"><Search size={19}/><input placeholder="Search people, resources, policies..."/></div>
+    {searchOpen ? (
+      <div className="search-box search-box-open">
+        <Search size={19}/>
+        <input placeholder="Search people, resources, policies..." autoFocus onBlur={() => setSearchOpen(false)}/>
+        <button className="search-box-close" onClick={() => setSearchOpen(false)} aria-label="Close search"><X size={16}/></button>
+      </div>
+    ) : (
+      <div className="topbar-spacer" />
+    )}
     <div className="top-actions">
+      {!searchOpen && (
+        <button className="icon-btn" onClick={() => setSearchOpen(true)} aria-label="Search"><Search size={20}/></button>
+      )}
       <button className="icon-btn"><Bell size={21}/></button>
       <button className="icon-btn notification"><MessageCircle size={21}/><span>2</span></button>
       <button className="profile" onClick={onProfileClick} title="Edit your profile">
-        <img src="/avatar-main.png"/>
+        {profile?.photo_url ? (
+          <img src={profile.photo_url} alt={fullName}/>
+        ) : (
+          <div className="profile-avatar-fallback">{getInitials(fullName)}</div>
+        )}
         <div><strong>Kia ora, {firstName}</strong>{roleTitle && <small>{roleTitle}</small>}</div>
         <ChevronDown size={18}/>
       </button>
@@ -631,15 +649,42 @@ function Header({ onMenuClick, profile, onSignOut, onProfileClick }) {
   </header>
 }
 
+const HERO_IMAGES = ['/hero.png', '/hero1.jpg']
+
 function Hero({ profile }) {
   const firstName = profile?.first_name?.toUpperCase() || 'THERE'
+  const [activeSlide, setActiveSlide] = useState(0)
+
+  useEffect(() => {
+    if (HERO_IMAGES.length < 2) return
+    const timer = setInterval(() => {
+      setActiveSlide(i => (i + 1) % HERO_IMAGES.length)
+    }, 7000)
+    return () => clearInterval(timer)
+  }, [])
+
   return <section className="hero">
+    {HERO_IMAGES.map((src, i) => (
+      <img key={src} src={src} alt="" className={`hero-slide ${i === activeSlide ? 'active' : ''}`} />
+    ))}
     <div className="hero-overlay" />
     <div className="hero-copy">
       <h1>KIA ORA,<br/>{firstName}</h1>
       <p>Everything Future Focus.<br/>One place.</p>
       <span>A PLACE TO BELONG</span>
     </div>
+    {HERO_IMAGES.length > 1 && (
+      <div className="hero-dots">
+        {HERO_IMAGES.map((src, i) => (
+          <button
+            key={src}
+            className={`hero-dot ${i === activeSlide ? 'active' : ''}`}
+            onClick={() => setActiveSlide(i)}
+            aria-label={`Show hero photo ${i + 1}`}
+          />
+        ))}
+      </div>
+    )}
   </section>
 }
 

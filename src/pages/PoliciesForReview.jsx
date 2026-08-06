@@ -41,7 +41,6 @@ export function PoliciesForReviewPage({ currentProfile }) {
   const [error, setError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [ownerProfiles, setOwnerProfiles] = useState({})
   const [feedbackStatusMap, setFeedbackStatusMap] = useState({})
   const [selectedDoc, setSelectedDoc] = useState(null)
   const [printViewDoc, setPrintViewDoc] = useState(null)
@@ -94,19 +93,6 @@ export function PoliciesForReviewPage({ currentProfile }) {
           if (stateDiff !== 0) return stateDiff
           return String(a.review_feedback_closes_effective || '').localeCompare(String(b.review_feedback_closes_effective || ''))
         })
-
-      const ownerIds = [...new Set(visiblePolicies.map(doc => doc.policy_owner_id || doc.owner_id).filter(Boolean))]
-      let profileMap = {}
-      if (ownerIds.length > 0) {
-        const { data: profilesData } = await supabase
-          .from('profiles')
-          .select('id, first_name, last_name')
-          .in('id', ownerIds)
-
-        profileMap = Object.fromEntries((profilesData || []).map(profile => [profile.id, `${profile.first_name || ''} ${profile.last_name || ''}`.trim()]))
-      }
-
-      setOwnerProfiles(profileMap)
 
       try {
         const { data: feedbackRows } = await supabase
@@ -286,7 +272,6 @@ export function PoliciesForReviewPage({ currentProfile }) {
             const categoryLabel = DOCUMENT_CATEGORIES.find(item => item.value === doc.category)?.label || doc.category
             const remainingDays = getDaysRemaining(doc.review_due_effective)
             const feedbackState = feedbackStatusMap[doc.id] || 'not_submitted'
-            const ownerName = doc.policy_owner_id ? ownerProfiles[doc.policy_owner_id] || 'Assigned owner' : '—'
             const reviewStateMeta = getReviewStateMeta(doc.review_alert_state)
             const canSubmitFeedback = doc.review_alert_state === 'open' || doc.review_alert_state === 'overdue'
             return (
@@ -304,16 +289,8 @@ export function PoliciesForReviewPage({ currentProfile }) {
                   </div>
                   <div className="review-meta-grid">
                     <div>
-                      <span className="review-meta-label">Owner</span>
-                      <strong>{ownerName}</strong>
-                    </div>
-                    <div>
                       <span className="review-meta-label">Last reviewed</span>
                       <strong>{formatDate(doc.last_reviewed_date)}</strong>
-                    </div>
-                    <div>
-                      <span className="review-meta-label">Next review</span>
-                      <strong>{formatDate(doc.next_review_date)}</strong>
                     </div>
                     <div>
                       <span className="review-meta-label">Review due</span>

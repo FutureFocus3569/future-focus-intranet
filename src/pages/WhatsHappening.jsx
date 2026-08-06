@@ -669,17 +669,13 @@ export function WhatsHappeningPage({ currentProfile }) {
         <div className="post-card-content post-card-content-clickable" onClick={() => openPost(post)}>
           <h2 className="post-title" title={post.title}>{post.title}</h2>
           <p className="post-body">{post.body}</p>
-          {post.images && post.images.length > 0 ? (
+          {post.images && post.images.length > 0 && (
             <div className={`post-images post-images-${post.images.length}`}>
               {post.images.map((url, i) => (
                 <div key={i}>
                   <img src={url} alt={`Image ${i + 1}`} loading="lazy" decoding="async" />
                 </div>
               ))}
-            </div>
-          ) : (
-            <div className="post-image-placeholder" style={{ background: centreColor.bg }}>
-              <span className="post-image-placeholder-text">{centreName}</span>
             </div>
           )}
         </div>
