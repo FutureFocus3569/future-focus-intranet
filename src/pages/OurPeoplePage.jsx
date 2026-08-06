@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { supabase, CENTRES } from '../lib/supabase.js'
-import { Plus, Trash2, X, Edit2, User, Search } from 'lucide-react'
+import { Plus, Trash2, X, Edit2, Search } from 'lucide-react'
+
+function getInitials(firstName, lastName) {
+  const initials = `${(firstName || '').trim()[0] || ''}${(lastName || '').trim()[0] || ''}`
+  return initials ? initials.toUpperCase() : '?'
+}
 
 function formatDateLabel(value) {
   if (!value) return 'Not set'
@@ -38,7 +43,7 @@ function PersonDetailModal({ person, appraisalCycles = [], onClose, onOpenApprai
               {person.photo_url ? (
                 <img src={person.photo_url} alt={fullName} loading="lazy" decoding="async" />
               ) : (
-                <div className="photo-placeholder"><User size={48}/></div>
+                <div className="person-photo-fallback">{getInitials(person.first_name, person.last_name)}</div>
               )}
             </div>
             <div className="person-detail-title">
@@ -417,7 +422,7 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
                             {person.photo_url ? (
                               <img src={person.photo_url} alt={`${person.first_name} ${person.last_name}`} loading="lazy" decoding="async" />
                             ) : (
-                              <div className="photo-placeholder"><User size={40}/></div>
+                              <div className="person-photo-fallback">{getInitials(person.first_name, person.last_name)}</div>
                             )}
                           </div>
                           <div className="person-info">
@@ -480,7 +485,7 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
                           {person.photo_url ? (
                             <img src={person.photo_url} alt={`${person.first_name} ${person.last_name}`} loading="lazy" decoding="async" />
                           ) : (
-                            <div className="photo-placeholder"><User size={40}/></div>
+                            <div className="person-photo-fallback">{getInitials(person.first_name, person.last_name)}</div>
                           )}
                         </div>
                         <div className="person-info">
