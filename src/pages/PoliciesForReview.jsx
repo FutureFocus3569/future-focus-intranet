@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { getSignedUrl } from '../lib/documentService.js'
 import { DOCUMENT_CATEGORIES } from '../lib/documentTypes.js'
 import { getPolicyFeedbackWindow, getPolicyReviewAlertState, isDocumentVisibleForCentre } from '../lib/policyReview.js'
+import { showToast } from '../lib/toast.js'
 import { PolicyPrintView } from '../components/PolicyPrintView.jsx'
 
 function formatDate(value) {
@@ -196,6 +197,7 @@ export function PoliciesForReviewPage({ currentProfile }) {
       }
 
       await loadPolicies()
+      showToast('Feedback submitted')
       closeFeedbackModal()
     } catch (err) {
       setError(err.message || 'Could not save feedback. Please try again.')

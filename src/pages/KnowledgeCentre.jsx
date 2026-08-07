@@ -723,6 +723,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
   // Policy review state
   const [policyReviewData, setPolicyReviewData] = useState([])
   const [policyReviewLoading, setPolicyReviewLoading] = useState(false)
+  const [policyReviewCategoryFilter, setPolicyReviewCategoryFilter] = useState('all')
 
   // Analysis modal state
   const [analysisPolicy, setAnalysisPolicy] = useState(null)
@@ -791,7 +792,7 @@ export function KnowledgeCentrePage({ currentProfile }) {
       // Get all published documents with review data
       const { data: docs } = await supabase
         .from('documents')
-        .select('id, title, status, review_feedback_opens_at, review_feedback_closes_at, review_frequency_months, document_type, parent_document_id')
+        .select('id, title, category, status, next_review_date, review_feedback_opens_at, review_feedback_closes_at, review_frequency_months, document_type, parent_document_id')
         .eq('status', 'published')
         .eq('document_type', 'policy')
         .is('parent_document_id', null)
@@ -814,15 +815,27 @@ export function KnowledgeCentrePage({ currentProfile }) {
 
         const reviewState = getPolicyReviewAlertState(doc)
         const isOpen = reviewState === 'open' || reviewState === 'overdue'
+        const dueAt = doc.next_review_date || doc.review_feedback_closes_at || null
+        const opensAt = doc.review_feedback_opens_at || (dueAt ? calculateFeedbackOpenDate(dueAt) : null)
 
         reviewDocs.push({
           ...doc,
           reviewState,
           isOpen,
+          dueAt,
+          opensAt,
           feedbackCount: (feedback || []).length,
           feedback: feedback || [],
         })
       }
+
+      // Soonest-opening review first, so upcoming reviews are easy to spot.
+      reviewDocs.sort((a, b) => {
+        if (!a.opensAt && !b.opensAt) return 0
+        if (!a.opensAt) return 1
+        if (!b.opensAt) return -1
+        return a.opensAt.localeCompare(b.opensAt)
+      })
 
       setPolicyReviewData(reviewDocs)
     } catch (err) {
@@ -969,7 +982,8 @@ export function KnowledgeCentrePage({ currentProfile }) {
     setClosingReviewId(policyDoc.id)
     setCloseReviewError('')
     try {
-      const today = new Date().toISOString().slice(0, 10)
+      const now = new Date()
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
       const { error } = await supabase
         .from('documents')
         .update({ review_feedback_closes_at: today })
@@ -1182,12 +1196,38 @@ export function KnowledgeCentrePage({ currentProfile }) {
               {createVersionSuccess}
             </div>
           )}
+          {policyReviewData.length > 0 && (
+            <div className="kc-policy-review-toolbar">
+              <select
+                className="centre-filter-select"
+                value={policyReviewCategoryFilter}
+                onChange={(e) => setPolicyReviewCategoryFilter(e.target.value)}
+              >
+                <option value="all">All categories</option>
+                {DOCUMENT_CATEGORIES.map(c => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+              <span className="kc-policy-review-hint">Sorted by soonest review opening</span>
+            </div>
+          )}
           {policyReviewLoading ? (
             <div className="kc-empty">Loading…</div>
           ) : policyReviewData.length === 0 ? (
             <div className="kc-empty"><strong>No policies for review</strong><small>Policies will appear here when they're in an active review window.</small></div>
           ) : (
-            policyReviewData.map(doc => (
+            (() => {
+              const filteredPolicyReviewData = policyReviewCategoryFilter === 'all'
+                ? policyReviewData
+                : policyReviewData.filter(doc => doc.category === policyReviewCategoryFilter)
+
+              if (filteredPolicyReviewData.length === 0) {
+                return <div className="kc-empty"><strong>No policies in this category</strong><small>Try a different category filter.</small></div>
+              }
+
+              return filteredPolicyReviewData.map(doc => {
+              const catLabel = DOCUMENT_CATEGORIES.find(c => c.value === doc.category)?.label || doc.category
+              return (
               <div key={doc.id} className="kc-policy-card">
                 <div className="kc-policy-header">
                   <div>
@@ -1197,6 +1237,13 @@ export function KnowledgeCentrePage({ currentProfile }) {
                         <span className="kc-badge kc-badge-open">Open for Review</span>
                       ) : (
                         <span className="kc-badge kc-badge-closed">Review Closed</span>
+                      )}
+                      {catLabel && <span className="kc-badge-count">{catLabel}</span>}
+                      {doc.opensAt && (
+                        <span className="kc-badge-count">Opens {new Date(doc.opensAt).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      )}
+                      {doc.dueAt && (
+                        <span className="kc-badge-count">Due {new Date(doc.dueAt).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                       )}
                       <span className="kc-badge-count">{doc.feedbackCount} feedback submission{doc.feedbackCount !== 1 ? 's' : ''}</span>
                     </div>
@@ -1284,7 +1331,9 @@ export function KnowledgeCentrePage({ currentProfile }) {
                   </div>
                 )}
               </div>
-            ))
+              )
+              })
+            })()
           )}
         </div>
       ) : (

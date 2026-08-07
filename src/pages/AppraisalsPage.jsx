@@ -86,7 +86,8 @@ function getCycleStatusLabel(status) {
 }
 
 function is360WindowOpen(cycle) {
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   if (!cycle?.review_360_opens_at || !cycle?.review_360_closes_at) return false
   return today >= cycle.review_360_opens_at && today <= cycle.review_360_closes_at
 }

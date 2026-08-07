@@ -5,13 +5,14 @@ import {
   Search, Bell, MessageCircle, ChevronDown, ChevronRight, CalendarDays,
   Wrench, ShieldCheck, LifeBuoy, BookOpen, Leaf, UserRound, Trophy, FolderOpen,
   Clock3, PartyPopper, HeartHandshake, LayoutDashboard, ExternalLink, Menu, X, LogOut, User, Edit2, Plus, Trash2,
-  Eye, EyeOff, Copy, Check, Lock
+  Eye, EyeOff, Copy, Check, Lock, AlertCircle
 } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { listSavedLogins, revealSavedLogin, saveLogin } from './lib/toolCredentialsService.js';
 import { LoginPage } from './pages/Login.jsx';
 import { PasswordResetPage } from './pages/PasswordReset.jsx';
 import { getPolicyReviewAlertState, isDocumentVisibleForCentre } from './lib/policyReview.js';
+import { subscribeToast } from './lib/toast.js';
 import WellbeingCheckin from './components/WellbeingCheckin.jsx';
 import './styles.css';
 
@@ -25,6 +26,7 @@ const KnowledgeCentrePage = lazy(() => import('./pages/KnowledgeCentre.jsx').the
 const CentresPage = lazy(() => import('./pages/CentresPage.jsx').then(m => ({ default: m.CentresPage })));
 const CelebrationsPage = lazy(() => import('./pages/CelebrationsPage.jsx').then(m => ({ default: m.CelebrationsPage })));
 const AppraisalsPage = lazy(() => import('./pages/AppraisalsPage.jsx').then(m => ({ default: m.AppraisalsPage })));
+const LearningPage = lazy(() => import('./pages/Learning.jsx').then(m => ({ default: m.LearningPage })));
 
 const navItems = [
   [Home, 'Home'],
@@ -47,7 +49,7 @@ const quickLinks = [
 const topCards = [
   { icon: Leaf, title: "WHAT'S HAPPENING", text: 'Leadership updates, celebrations and company news.', tone: 'green', link: 'View', page: "What's Happening" },
   { icon: Users, title: 'YOUR CENTRE', text: 'Occupancy, staffing, roster percentage and important actions.', tone: 'blue', link: 'View', page: null },
-  { icon: BookOpen, title: 'PĀTAKA MĀTAURANGA', text: 'Learning, resources, PD and professional development.', tone: 'mint', link: 'View', page: null },
+  { icon: BookOpen, title: 'PĀTAKA MĀTAURANGA', text: 'Learning, resources, PD and professional development.', tone: 'mint', link: 'View', page: 'Learning' },
   { icon: MessageCircle, title: 'ASK FUTURE FOCUS', text: 'Search policies and get answers instantly.', tone: 'purple', link: 'Ask Now', page: 'FF AI' },
 ];
 
@@ -147,11 +149,12 @@ function buildAnniversaryPeople(staffList) {
       if (daysUntil < 0 || daysUntil > oneMonthDays) return null;
 
       const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim() || 'Unknown Staff';
+      const dateLabel = nextAnniversary.toLocaleDateString('en-NZ', { month: 'short', day: 'numeric' });
 
       return {
         id: person.id,
         name: fullName,
-        dateLabel: `${milestoneYears} year${milestoneYears === 1 ? '' : 's'}`,
+        dateLabel: `${dateLabel} (${milestoneYears}yr${milestoneYears === 1 ? '' : 's'})`,
         photoUrl: normalizePhotoUrl(person.photo_url),
         sortDate: nextAnniversaryDay,
       };
@@ -716,7 +719,8 @@ function NewsPanel() {
 function EventsPanel({ onViewAll }) {
   const [events, setEvents] = useState([]);
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     supabase.from('events').select('*').gte('date', today).order('date').order('start_time').limit(5)
       .then(({ data }) => setEvents(data || []));
   }, []);
@@ -768,6 +772,32 @@ function WellbeingSection({ userId, centreName }) {
       <SectionHeader title="Daily Wellbeing Check-in" />
       <WellbeingCheckin userId={userId} centreName={centreName} />
     </section>
+  )
+}
+
+function ToastContainer() {
+  const [toasts, setToasts] = useState([])
+
+  useEffect(() => {
+    return subscribeToast((toast) => {
+      setToasts((prev) => [...prev, toast])
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== toast.id))
+      }, 3200)
+    })
+  }, [])
+
+  if (!toasts.length) return null
+
+  return (
+    <div className="toast-stack">
+      {toasts.map((t) => (
+        <div key={t.id} className={`toast toast-${t.type}`}>
+          {t.type === 'error' ? <AlertCircle size={16} /> : <Check size={16} />}
+          <span>{t.message}</span>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -852,6 +882,10 @@ function App(){
   const [anniversaryPeople, setAnniversaryPeople] = useState([]);
   const [isPasswordReset, setIsPasswordReset] = useState(false);
   const [openReviewCount, setOpenReviewCount] = useState(0);
+
+  useEffect(() => {
+    document.title = page === 'Home' ? 'Future Focus' : `${page} · Future Focus`;
+  }, [page]);
 
   useEffect(() => {
     // Check if we're in invite/reset flow from email links.
@@ -1021,6 +1055,7 @@ function App(){
   const canViewCentres = profile?.permission === 'super_admin' || profile?.permission === 'centre_leader';
 
   return <div className="app-shell">
+    <ToastContainer />
     <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)}
     page={page} setPage={navigateToPage} canManageStaff={canManageStaff} profile={profile} />
     <main className="main-area">
@@ -1050,6 +1085,8 @@ function App(){
           <PoliciesForReviewPage currentProfile={profile} />
         ) : page === 'Knowledge Centre' ? (
           <KnowledgeCentrePage currentProfile={profile} />
+        ) : page === 'Learning' ? (
+          <LearningPage currentProfile={profile} />
         ) : (
           <>
             <Hero profile={profile} />

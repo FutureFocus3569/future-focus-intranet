@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, BarChart3, Building2, Globe2, Users } from 'lucide-react'
+import { Activity, BarChart3, Building2, ChevronLeft, ChevronRight, Globe2, Users } from 'lucide-react'
 import { supabase, CENTRES } from '../lib/supabase.js'
+import { showToast } from '../lib/toast.js'
 
 const MOOD_WEIGHTS = {
   very_sad: 1,
@@ -8,6 +9,54 @@ const MOOD_WEIGHTS = {
   neutral: 3,
   happy: 4,
   very_happy: 5,
+}
+
+const MOOD_META = {
+  very_sad: { label: 'Very sad', color: '#ef4444', img: '/mood-faces/mood-very-sad.png' },
+  sad: { label: 'Sad', color: '#f97316', img: '/mood-faces/mood-sad.png' },
+  neutral: { label: 'Neutral', color: '#eab308', img: '/mood-faces/mood-neutral.png' },
+  happy: { label: 'Happy', color: '#14b8a6', img: '/mood-faces/mood-happy.png' },
+  very_happy: { label: 'Very happy', color: '#22c55e', img: '/mood-faces/mood-very-happy.png' },
+}
+
+function isUrgentMood(mood) {
+  return mood === 'sad' || mood === 'very_sad'
+}
+
+function getMoodMeta(mood) {
+  return MOOD_META[mood] || { label: mood || 'Unknown', color: '#8fa3ad' }
+}
+
+function getInitials(firstName, lastName) {
+  const initials = `${(firstName || '').trim()[0] || ''}${(lastName || '').trim()[0] || ''}`
+  return initials ? initials.toUpperCase() : '?'
+}
+
+function startOfDay(date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function getDayRange(day) {
+  const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0, 0)
+  const end = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, 0, 0, 0, 0)
+  return { startIso: start.toISOString(), endIso: end.toISOString() }
+}
+
+function formatDayLabel(day) {
+  const today = startOfDay(new Date())
+  const yesterday = startOfDay(new Date(today))
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  if (day.getTime() === today.getTime()) return 'Today'
+  if (day.getTime() === yesterday.getTime()) return 'Yesterday'
+  return day.toLocaleDateString('en-NZ', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: day.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+  })
 }
 
 function getStartDate(days) {
@@ -71,15 +120,6 @@ function buildWeeklyMoodAverages(rows, weeks = 12) {
     avg: b.count > 0 ? b.sum / b.count : 0,
     count: b.count,
   }))
-}
-
-function formatCheckinTime(value) {
-  return new Date(value).toLocaleString('en-NZ', {
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
 }
 
 const APPRAISAL_STATUS_STYLES = {
@@ -182,6 +222,55 @@ function TrendChart({ centreSeries, orgSeries, centreLabel }) {
   )
 }
 
+function FollowupControls({ checkin, followup, saving, supported, onSave }) {
+  const [status, setStatus] = useState(followup?.status || 'open')
+  const [notes, setNotes] = useState(followup?.notes || '')
+
+  useEffect(() => {
+    setStatus(followup?.status || 'open')
+    setNotes(followup?.notes || '')
+  }, [checkin.id, followup?.status, followup?.notes])
+
+  if (!supported) {
+    return <p className="checkin-followup-unsupported">Follow-up tracking table is not active yet.</p>
+  }
+
+  const isDirty = status !== (followup?.status || 'open') || notes !== (followup?.notes || '')
+
+  return (
+    <div className="checkin-followup">
+      <div className="checkin-followup-top">
+        <span className="checkin-followup-label">Follow-up</span>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          disabled={saving}
+          className={`followup-status status-${status}`}
+        >
+          <option value="open">Open</option>
+          <option value="in_progress">In progress</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+      <textarea
+        className="checkin-followup-textarea"
+        placeholder="What did you do to check in with them?"
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        rows={2}
+      />
+      <button
+        type="button"
+        className="btn-secondary checkin-followup-save"
+        disabled={saving || !isDirty}
+        onClick={() => onSave(checkin, status, notes)}
+      >
+        {saving ? 'Saving…' : 'Save follow-up'}
+      </button>
+    </div>
+  )
+}
+
 export function CentresPage({ currentProfile, onOpenAppraisal }) {
   const isSuperAdmin = currentProfile?.permission === 'super_admin'
   const isCentreLeader = currentProfile?.permission === 'centre_leader'
@@ -198,12 +287,15 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
   const [centreTrend, setCentreTrend] = useState([])
   const [orgTrend, setOrgTrend] = useState([])
   const [followupsByCheckinId, setFollowupsByCheckinId] = useState({})
-  const [urgentCheckins, setUrgentCheckins] = useState([])
   const [appraisalRows, setAppraisalRows] = useState([])
   const [followupsSupported, setFollowupsSupported] = useState(true)
   const [savingFollowupId, setSavingFollowupId] = useState(null)
+  const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()))
+  const [dayCheckins, setDayCheckins] = useState([])
+  const [dayCheckinsLoading, setDayCheckinsLoading] = useState(false)
 
   const activeCentre = isSuperAdmin ? selectedCentre : (currentProfile?.centre || '')
+  const isViewingToday = selectedDay.getTime() === startOfDay(new Date()).getTime()
 
   useEffect(() => {
     if (!canAccess || !activeCentre) {
@@ -213,6 +305,11 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
 
     loadCentreData(activeCentre)
   }, [canAccess, activeCentre])
+
+  useEffect(() => {
+    if (!canAccess || !activeCentre) return
+    loadDayCheckins(activeCentre, selectedDay)
+  }, [canAccess, activeCentre, selectedDay])
 
   useEffect(() => {
     if (!canAccess || !activeCentre) return
@@ -243,24 +340,14 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
       const profiles = profilesRes.data || []
       const posts = postsRes.data || []
       const checkins = checkinsRes.data || []
-      const profileByUserId = Object.fromEntries(
-        profiles
-          .filter((profile) => profile?.id)
-          .map((profile) => [profile.id, profile])
-      )
 
       const staff = profiles.filter((p) => p.centre === centreName)
       const recentUpdates = posts.filter((p) => p.centre === centreName || p.centre === null)
       const centreCheckins = checkins.filter((c) => c.centre_name === centreName)
-      const urgent = centreCheckins
-        .filter((c) => c.mood === 'sad' || c.mood === 'very_sad')
-        .map((c) => ({ ...c, profile: profileByUserId[c.user_id] || null }))
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-        .slice(0, 30)
 
       const followupsRes = await supabase
         .from('wellbeing_followups')
-        .select('checkin_id, status, updated_at')
+        .select('checkin_id, status, notes, updated_at')
         .eq('centre_name', centreName)
 
       if (followupsRes.error) {
@@ -286,7 +373,6 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
       setOrgSummary(summarizeCheckins(checkins))
       setCentreTrend(buildWeeklyMoodAverages(centreCheckins, 12))
       setOrgTrend(buildWeeklyMoodAverages(checkins, 12))
-      setUrgentCheckins(urgent)
     } catch (err) {
       console.error('Failed to load centre page data:', err)
       setError('Could not load centre data right now.')
@@ -336,9 +422,64 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
     }
   }
 
+  async function loadDayCheckins(centreName, day) {
+    setDayCheckinsLoading(true)
+    try {
+      const { startIso, endIso } = getDayRange(day)
+      const { data, error } = await supabase
+        .from('wellbeing_checkins')
+        .select('id, user_id, mood, comment, centre_name, created_at')
+        .eq('centre_name', centreName)
+        .gte('created_at', startIso)
+        .lt('created_at', endIso)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      const rows = data || []
+      const userIds = [...new Set(rows.map((row) => row.user_id).filter(Boolean))]
+      let profileMap = {}
+
+      if (userIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .in('id', userIds)
+        profileMap = Object.fromEntries((profilesData || []).map((profile) => [profile.id, profile]))
+      }
+
+      setDayCheckins(rows.map((row) => ({ ...row, profile: profileMap[row.user_id] || null })))
+    } catch (err) {
+      console.error('Failed to load daily check-ins:', err)
+      setDayCheckins([])
+    }
+    setDayCheckinsLoading(false)
+  }
+
+  function goToPreviousDay() {
+    setSelectedDay((day) => {
+      const next = new Date(day)
+      next.setDate(next.getDate() - 1)
+      return next
+    })
+  }
+
+  function goToNextDay() {
+    setSelectedDay((day) => {
+      if (day.getTime() === startOfDay(new Date()).getTime()) return day
+      const next = new Date(day)
+      next.setDate(next.getDate() + 1)
+      return next
+    })
+  }
+
+  function goToToday() {
+    setSelectedDay(startOfDay(new Date()))
+  }
+
   const selectedLabel = useMemo(() => activeCentre || 'Your Centre', [activeCentre])
 
-  async function setFollowupStatus(checkin, status) {
+  async function saveFollowup(checkin, status, notes) {
     if (!currentProfile?.id) return
     if (!followupsSupported) return
 
@@ -351,6 +492,7 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
           centre_name: checkin.centre_name,
           user_id: checkin.user_id,
           status,
+          notes,
           updated_by: currentProfile.id,
           updated_at: new Date().toISOString(),
         },
@@ -358,7 +500,7 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
       )
 
     if (upsertError) {
-      console.error('Failed to set follow-up status:', upsertError)
+      console.error('Failed to save follow-up:', upsertError)
       setSavingFollowupId(null)
       return
     }
@@ -369,10 +511,12 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
         ...(prev[checkin.id] || {}),
         checkin_id: checkin.id,
         status,
+        notes,
         updated_at: new Date().toISOString(),
       },
     }))
     setSavingFollowupId(null)
+    showToast('Follow-up saved')
   }
 
   if (!canAccess) {
@@ -488,48 +632,59 @@ export function CentresPage({ currentProfile, onOpenAppraisal }) {
               </div>
             </article>
 
-            <article className="centre-module">
-              <div className="centre-module-header">
-                <h3><AlertTriangle size={15} /> Needs Follow-up</h3>
-                <small>Sad or very sad check-ins</small>
+          </section>
+
+          <section className="centre-checkins-card">
+            <div className="centre-checkins-header">
+              <h3><Activity size={15} /> Daily Check-ins — {selectedLabel}</h3>
+              <div className="centre-checkins-nav">
+                <button type="button" onClick={goToPreviousDay} title="Previous day"><ChevronLeft size={16} /></button>
+                <span className="centre-checkins-date-label">{formatDayLabel(selectedDay)}</span>
+                <button type="button" onClick={goToNextDay} disabled={isViewingToday} title="Next day"><ChevronRight size={16} /></button>
+                {!isViewingToday && (
+                  <button type="button" className="centre-checkins-today-btn" onClick={goToToday}>Jump to today</button>
+                )}
               </div>
-              {!followupsSupported && (
-                <p>Follow-up tracking table is not active yet. Run latest Supabase migration to enable status tracking.</p>
-              )}
-              {urgentCheckins.length === 0 ? (
-                <p>No recent sad or very sad check-ins in this 90-day window.</p>
-              ) : (
-                <div className="followup-list">
-                  {urgentCheckins.slice(0, 12).map((checkin) => {
-                    const status = followupsByCheckinId[checkin.id]?.status || 'open'
-                    const fullName = `${checkin.profile?.first_name || ''} ${checkin.profile?.last_name || ''}`.trim() || 'Unknown staff member'
-                    return (
-                      <article key={checkin.id} className="followup-item">
-                        <div className="followup-item-header">
-                          <div>
-                            <strong>{fullName}</strong>
-                            <small>{checkin.mood === 'very_sad' ? 'Very sad' : 'Sad'} • {formatCheckinTime(checkin.created_at)}</small>
-                          </div>
-                          {followupsSupported && (
-                            <select
-                              value={status}
-                              onChange={(e) => setFollowupStatus(checkin, e.target.value)}
-                              disabled={savingFollowupId === checkin.id}
-                              className={`followup-status status-${status}`}
-                            >
-                              <option value="open">Open</option>
-                              <option value="in_progress">In progress</option>
-                              <option value="closed">Closed</option>
-                            </select>
-                          )}
+            </div>
+
+            {dayCheckinsLoading ? (
+              <p>Loading check-ins…</p>
+            ) : dayCheckins.length === 0 ? (
+              <p>No check-ins submitted for {selectedLabel} — {formatDayLabel(selectedDay)}.</p>
+            ) : (
+              <div className="centre-checkin-list">
+                {dayCheckins.map((checkin) => {
+                  const mood = getMoodMeta(checkin.mood)
+                  const fullName = `${checkin.profile?.first_name || ''} ${checkin.profile?.last_name || ''}`.trim() || 'Unknown staff member'
+                  const urgent = isUrgentMood(checkin.mood)
+                  return (
+                    <article key={checkin.id} className={`centre-checkin-item${urgent ? ' urgent' : ''}`}>
+                      <div className="centre-checkin-avatar">{getInitials(checkin.profile?.first_name, checkin.profile?.last_name)}</div>
+                      <div className="centre-checkin-body">
+                        <div className="centre-checkin-top">
+                          <strong>{fullName}</strong>
+                          <span className="centre-checkin-time">{new Date(checkin.created_at).toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit' })}</span>
                         </div>
-                        <p>{checkin.comment?.trim() ? checkin.comment : 'No comment provided.'}</p>
-                      </article>
-                    )
-                  })}
-                </div>
-              )}
-            </article>
+                        <span className="centre-checkin-mood">
+                          <img className="centre-checkin-mood-face" src={mood.img} alt={mood.label} />
+                          {mood.label}
+                        </span>
+                        <p className="centre-checkin-comment">{checkin.comment?.trim() ? checkin.comment : 'No comment provided.'}</p>
+                        {urgent && (
+                          <FollowupControls
+                            checkin={checkin}
+                            followup={followupsByCheckinId[checkin.id]}
+                            saving={savingFollowupId === checkin.id}
+                            supported={followupsSupported}
+                            onSave={saveFollowup}
+                          />
+                        )}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
           </section>
         </>
       )}

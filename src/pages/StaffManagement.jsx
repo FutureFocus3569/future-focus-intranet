@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase, CENTRES, PERMISSIONS } from '../lib/supabase.js'
 import { Users, Plus, Trash2, X, Search, Edit2 } from 'lucide-react'
+import { showToast } from '../lib/toast.js'
 
 const PERMISSION_LABELS = { super_admin: 'Super Admin', centre_leader: 'Centre Leader', staff: 'Staff' }
 const PERMISSION_COLOURS = { super_admin: '#005866', centre_leader: '#7c3aed', staff: '#374151' }
@@ -76,6 +77,7 @@ function AddStaffModal({ onClose, onSuccess, callerProfile }) {
         return
       }
 
+      showToast('Staff member added')
       onSuccess()
       onClose()
     } catch (err) {
@@ -211,6 +213,7 @@ function EditStaffModal({ staff, onClose, onSuccess, callerProfile }) {
       let data = null
       try { data = raw ? JSON.parse(raw) : null } catch { data = raw }
       if (!res.ok) throw new Error(getApiErrorMessage(data, `Could not update staff member (HTTP ${res.status}).`))
+      showToast('Changes saved')
       onSuccess()
       onClose()
     } catch (err) {
@@ -354,6 +357,7 @@ export function StaffManagementPage({ currentProfile }) {
       if (!res.ok) throw new Error(getApiErrorMessage(data, `Could not remove staff member (HTTP ${res.status}).`))
 
       setRemoving(null)
+      showToast('Staff member removed')
       await loadStaff()
     } catch (err) {
       console.error(err)

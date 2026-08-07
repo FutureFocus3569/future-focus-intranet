@@ -146,7 +146,8 @@ export function inferReviewStatus(documentData = {}) {
   const status = documentData.review_status
   if (status && REVIEW_STATUS_VALUES.includes(status)) return status
 
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const openDate = documentData.review_feedback_opens_at || null
   const closeDate = documentData.review_feedback_closes_at || null
 

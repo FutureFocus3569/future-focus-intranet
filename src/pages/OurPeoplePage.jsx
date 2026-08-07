@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase, CENTRES } from '../lib/supabase.js'
 import { Plus, Trash2, X, Edit2, Search } from 'lucide-react'
+import { showToast } from '../lib/toast.js'
 
 function getInitials(firstName, lastName) {
   const initials = `${(firstName || '').trim()[0] || ''}${(lastName || '').trim()[0] || ''}`
@@ -132,6 +133,7 @@ function AddEditStaffModal({ staff, centre, onClose, onSaved, isAdmin }) {
       if (error) { setError(error.message); setLoading(false); return }
     }
     
+    showToast(isEdit ? 'Changes saved' : 'Person added')
     onSaved(); onClose()
   }
 
@@ -298,6 +300,7 @@ export function OurPeoplePage({ currentProfile, onOpenAppraisal }) {
     await supabase.from('profiles').delete().eq('id', person.id)
     setStaff(s => s.filter(p => p.id !== person.id))
     setDeleting(null)
+    showToast('Person removed')
   }
 
   function canEditPerson(person) {

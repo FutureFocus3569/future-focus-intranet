@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase, CENTRES } from '../lib/supabase.js'
 import { Plus, Trash2, X, Megaphone, PartyPopper, BookOpen, Bell, Edit2, Image, Paperclip, FileText, ThumbsUp, MessageCircle, Flame } from 'lucide-react'
+import { showToast } from '../lib/toast.js'
 
 const CATEGORIES = [
   { value: 'update',      label: 'Leadership Update', colour: '#005866', bg: '#eaf7f7', Icon: Megaphone },
@@ -181,6 +182,7 @@ function PostModal({ onClose, onSaved, callerProfile, editing }) {
         const { error } = await supabase.from('posts').insert({ ...payload, created_by: session.user.id })
         if (error) throw error
       }
+      showToast(editing ? 'Post updated' : 'Post published')
       onSaved(); onClose()
     } catch (err) {
       setError(err.message)
@@ -589,6 +591,7 @@ export function WhatsHappeningPage({ currentProfile }) {
     await supabase.from('posts').delete().eq('id', id)
     setPosts(p => p.filter(post => post.id !== id))
     setDeleting(null)
+    showToast('Post deleted')
   }
 
   function canDelete(post) {
@@ -716,27 +719,23 @@ export function WhatsHappeningPage({ currentProfile }) {
               value={centreFilter}
               onChange={(e) => setCentreFilter(e.target.value)}
             >
-              <option value="all">All Centres + Company-wide</option>
+              <option value="all">All Centres</option>
               {isAdmin ? (
                 CENTRES.map(c => <option key={c} value={c}>{c}</option>)
               ) : (
                 <option value={currentProfile?.centre}>{currentProfile?.centre}</option>
               )}
             </select>
-          </div>
-
-          <div className="tag-filter-bar">
-            <button className={`tag-filter-btn ${tagFilter === 'all' ? 'active' : ''}`} onClick={() => setTagFilter('all')}>All Tags</button>
-            {TAGS.map(tag => (
-              <button
-                key={tag.value}
-                className={`tag-filter-btn ${tagFilter === tag.value ? 'active' : ''}`}
-                style={tagFilter === tag.value ? { background: tag.bg, color: tag.colour, borderColor: tag.colour } : {}}
-                onClick={() => setTagFilter(tagFilter === tag.value ? 'all' : tag.value)}
-              >
-                {tag.label}
-              </button>
-            ))}
+            <select
+              className="centre-filter-select"
+              value={tagFilter}
+              onChange={(e) => setTagFilter(e.target.value)}
+            >
+              <option value="all">All Tags</option>
+              {TAGS.map(tag => (
+                <option key={tag.value} value={tag.value}>{tag.label}</option>
+              ))}
+            </select>
           </div>
 
           {loading ? (

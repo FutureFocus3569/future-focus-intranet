@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase, CENTRES } from '../lib/supabase.js'
 import { Plus, Trash2, X, CalendarDays, Clock, Edit2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { showToast } from '../lib/toast.js'
 
 const ALL = 'all'
 
@@ -143,6 +144,7 @@ function AddEventModal({ onClose, onSaved, callerProfile }) {
       created_by: session.user.id,
     })
     if (error) { setError(error.message); setLoading(false); return }
+    showToast('Event added')
     onSaved(); onClose()
   }
 
@@ -207,6 +209,7 @@ function EditEventModal({ event, onClose, onSaved, callerProfile }) {
       description: form.description,
     }).eq('id', event.id)
     if (error) { setError(error.message); setLoading(false); return }
+    showToast('Event updated')
     onSaved(); onClose()
   }
 
@@ -303,6 +306,7 @@ export function EventsPage({ currentProfile }) {
     await supabase.from('events').delete().eq('id', event.id)
     setEvents(ev => ev.filter(e => e.id !== event.id))
     setDeleting(null)
+    showToast('Event deleted')
   }
 
   function canEditEvent(event) {
