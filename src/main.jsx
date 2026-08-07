@@ -34,7 +34,7 @@ const navItems = [
   [Building2, 'Centres'],
   [Users, 'Our People'],
   [HeartHandshake, 'Appraisals'],
-  [GraduationCap, 'Learning'],
+  [GraduationCap, 'Pātaka Mātauranga'],
   [Sparkles, 'FF AI'],
 ];
 
@@ -49,7 +49,7 @@ const quickLinks = [
 const topCards = [
   { icon: Leaf, title: "WHAT'S HAPPENING", text: 'Leadership updates, celebrations and company news.', tone: 'green', link: 'View', page: "What's Happening" },
   { icon: Users, title: 'YOUR CENTRE', text: 'Occupancy, staffing, roster percentage and important actions.', tone: 'blue', link: 'View', page: null },
-  { icon: BookOpen, title: 'PĀTAKA MĀTAURANGA', text: 'Learning, resources, PD and professional development.', tone: 'mint', link: 'View', page: 'Learning' },
+  { icon: BookOpen, title: 'PĀTAKA MĀTAURANGA', text: 'Learning, resources, PD and professional development.', tone: 'mint', link: 'View', page: 'Pātaka Mātauranga' },
   { icon: MessageCircle, title: 'ASK FUTURE FOCUS', text: 'Search policies and get answers instantly.', tone: 'purple', link: 'Ask Now', page: 'FF AI' },
 ];
 
@@ -1085,7 +1085,7 @@ function App(){
           <PoliciesForReviewPage currentProfile={profile} />
         ) : page === 'Knowledge Centre' ? (
           <KnowledgeCentrePage currentProfile={profile} />
-        ) : page === 'Learning' ? (
+        ) : page === 'Pātaka Mātauranga' ? (
           <LearningPage currentProfile={profile} />
         ) : (
           <>
